@@ -44,3 +44,9 @@ h2{font-size:18px;margin:18px 0 6px}
 .tabs button.on{color:var(--gold-d);font-weight:700}
 .hidden{display:none!important}
 a{color:var(--gold-d)}
+/* kde může pracovat */
+.okresy{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;background:var(--gold-s)}
+.okr-hlava{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px;font-size:14px}
+.okr-pocet{color:var(--mute);font-size:13px}
+.okr-vse{margin-left:auto;font-size:13px}
+.okresy .chips label{font-size:13px;padding:5px 10px}

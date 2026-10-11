@@ -65,15 +65,52 @@ function hlidejPole(kontrola) {   // kontrola pole po opuštění; u pole s chyb
   });
 }
 
+// ---------- kde může pracovat: kraje (více) → okresní města (výchozí všechna) ----------
+function oblastHtml(vybrane) {   // vybrane = Set kódů okresů nebo null (nová registrace)
+  const vKraji = (k) => S.cis.okres.filter((o) => o.kraj_kod === k);
+  const krajZap = (k) => vybrane && vKraji(k).some((o) => vybrane.has(o.kod));
+  return `<div class="fld oblast" data-f="oblast"><label>Kde můžete pracovat – vyberte kraje</label>
+    <div class="chips">${S.cis.kraj.map((k) => `<label><input type="checkbox" name="oblkraj" value="${k.kod}"${krajZap(k.kod) ? ' checked' : ''}> ${esc(k.nazev.replace('Hlavní město ', ''))}</label>`).join('')}</div>
+    ${S.cis.kraj.map((k) => `<div class="okresy${krajZap(k.kod) ? '' : ' hidden'}" data-kraj="${k.kod}">
+      <div class="okr-hlava"><b>${esc(k.nazev)}</b> <span class="okr-pocet"></span> <a href="#" class="okr-vse">vybrat vše</a></div>
+      <div class="chips">${vKraji(k.kod).map((o) => `<label><input type="checkbox" name="okres" value="${o.kod}"${!vybrane || vybrane.has(o.kod) ? ' checked' : ''}> ${esc(o.mesto)}</label>`).join('')}</div>
+      <div class="hint">Okresní města – odznačte, kam jezdit nechcete.</div></div>`).join('')}
+    <div class="err"></div></div>`;
+}
+function oblastPocty() {
+  document.querySelectorAll('.okresy').forEach((p) => {
+    const vse = p.querySelectorAll('input[name=okres]'), zap = p.querySelectorAll('input[name=okres]:checked');
+    p.querySelector('.okr-pocet').textContent = `${zap.length} z ${vse.length}`;
+    p.querySelector('.okr-vse').textContent = zap.length === vse.length ? 'zrušit vše' : 'vybrat vše';
+  });
+}
+function zapniOblast() {
+  document.querySelectorAll('input[name=oblkraj]').forEach((ch) => ch.addEventListener('change', () => {
+    const p = document.querySelector(`.okresy[data-kraj="${ch.value}"]`);
+    p.classList.toggle('hidden', !ch.checked);
+    p.querySelectorAll('input[name=okres]').forEach((o) => (o.checked = ch.checked));   // nově vybraný kraj = všechna města
+    oblastPocty();
+  }));
+  document.querySelectorAll('.okr-vse').forEach((a) => (a.onclick = (e) => {
+    e.preventDefault();
+    const boxy = a.closest('.okresy').querySelectorAll('input[name=okres]');
+    const vse = [...boxy].every((b) => b.checked); boxy.forEach((b) => (b.checked = !vse)); oblastPocty();
+  }));
+  document.querySelectorAll('input[name=okres]').forEach((o) => o.addEventListener('change', oblastPocty));
+  oblastPocty();
+}
+const oblastVyber = () => [...document.querySelectorAll('.okresy:not(.hidden) input[name=okres]:checked')].map((x) => x.value);
+
 // ---------- start ----------
 async function start() {
-  const [kraj, stat, zp, banka] = await Promise.all([
+  const [kraj, okres, stat, zp, banka] = await Promise.all([
     sb.from('kraj').select('kod,nazev').order('poradi'),
+    sb.from('okres').select('kod,mesto,kraj_kod').order('poradi'),
     sb.from('stat').select('kod,nazev').order('nazev'),
     sb.from('zdravotni_pojistovna').select('kod,nazev').order('kod'),
     sb.from('banka').select('kod,nazev').order('nazev'),
   ]);
-  S.cis = { kraj: kraj.data || [], stat: stat.data || [], zp: zp.data || [], banka: banka.data || [] };
+  S.cis = { kraj: kraj.data || [], okres: okres.data || [], stat: stat.data || [], zp: zp.data || [], banka: banka.data || [] };
   const { data } = await sb.auth.getSession();
   if (data.session) return poPrihlaseni();
   location.hash === '#registrace' ? vRegistrace() : vUvod();
@@ -97,8 +134,8 @@ function vRegistrace() {
    <div class="row">${pole('jmeno', 'Jméno', '', { ac: 'given-name' })}${pole('prijmeni', 'Příjmení', '', { ac: 'family-name' })}</div>
    ${pole('telefon', 'Telefon', '', { typ: 'tel', ac: 'tel', ph: '777 123 456', im: 'tel' })}
    ${pole('email', 'E-mail', '', { typ: 'email', ac: 'email', ph: 'jana@seznam.cz', hint: 'Na tento e-mail se budete přihlašovat.' })}
-   ${pole('kraj', 'Kraj, kde můžete pracovat', '', { select: opt(S.cis.kraj, '', '— vyberte —') })}
-   ${pole('obec', 'Obec / město', '', { ac: 'address-level2' })}
+   ${pole('obec', 'Kde bydlíte (obec / město)', '', { ac: 'address-level2' })}
+   ${oblastHtml(null)}
    <div class="fld" data-f="zajem"><label>Mám zájem o</label><div class="chips">
      <label><input type="checkbox" name="zajem" value="hosteska" checked> hosteska</label>
      <label><input type="checkbox" name="zajem" value="promoter"> promotér/ka</label>
@@ -111,11 +148,12 @@ function vRegistrace() {
    <button class="btn" type="submit">Odeslat registraci</button></form>
    <p class="mute" style="text-align:center"><a href="#" id="zpet">Už jsem registrovaná – přihlásit</a></p>`;
   document.getElementById('zpet').onclick = (e) => { e.preventDefault(); vPrihlaseni(); };
+  zapniOblast();
   const vyber = (n) => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map((x) => x.value);
   const kontrola = () => ({
     jmeno: K.povinne(val('jmeno'), 'jméno'), prijmeni: K.povinne(val('prijmeni'), 'příjmení'),
     telefon: K.telefonChyba(val('telefon')), email: K.emailChyba(val('email')),
-    kraj: K.povinne(val('kraj'), 'kraj'), obec: K.povinne(val('obec'), 'obec'),
+    oblast: oblastVyber().length ? '' : 'Vyberte aspoň jeden kraj a v něm aspoň jedno město.', obec: K.povinne(val('obec'), 'obec'),
     zajem: vyber('zajem').length ? '' : 'Vyberte aspoň jednu možnost.',
     gdpr: val('gdpr') ? '' : 'Bez souhlasu vás nemůžeme evidovat.',
   });
@@ -126,7 +164,7 @@ function vRegistrace() {
     const b = e.target.querySelector('button'); b.disabled = true; b.textContent = 'Odesílám…';
     const { error } = await sb.rpc('registrace', { p: {
       jmeno: val('jmeno'), prijmeni: val('prijmeni'), telefon: K.telefonNormalizuj(val('telefon')), email: val('email').toLowerCase(),
-      kraj_kod: val('kraj'), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze } });
+      okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze } });
     if (error) { b.disabled = false; b.textContent = 'Odeslat registraci'; e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(error)), 'bad')); return; }
     $app.innerHTML = `<h1>Děkujeme!</h1>${msg('Registrace dorazila ✓')}<p>Ozveme se vám. Jakmile vás schválíme, přihlásíte se e-mailem <b>${esc(val('email') || '')}</b> a doplníte profil.</p>
       <button class="btn o" id="pp">Přihlásit</button>`;
@@ -174,12 +212,14 @@ async function poPrihlaseni() {
   ukaz('prehled');
 }
 async function nacti() {
-  const [o, p, n, d] = await Promise.all([
+  const [o, p, n, d, oo] = await Promise.all([
     sb.from('osoba').select('*').single(),
     sb.from('osoba_profil').select('*').maybeSingle(),
     sb.from('osoba_nastup').select('*').maybeSingle(),
     sb.from('dokument').select('id,stav,obsah,vytvoreno,podepsano_at,podpis,dokument_sablona(nazev,druh)').order('vytvoreno', { ascending: false }),
+    sb.from('osoba_okres').select('okres_kod'),
   ]);
+  S.okresy = (oo.data || []).map((x) => x.okres_kod);
   S.osoba = o.data; S.profil = p.data; S.nastup = n.data; S.dokumenty = (d.data || []).filter((x) => x.stav !== 'zruseno');
   document.getElementById('kdo').textContent = S.osoba ? S.osoba.jmeno + ' ' + S.osoba.prijmeni : '';
 }
@@ -220,10 +260,13 @@ function vProfil() {
    <label class="chk"><input type="checkbox" id="ridicak" ${p.ridicak ? 'checked' : ''}> Mám řidičák</label>
    <label class="chk"><input type="checkbox" id="auto" ${p.vlastni_auto ? 'checked' : ''}> Mám vlastní auto</label>
    ${pole('dostupnost', 'Kdy můžete pracovat', p.dostupnost || '', { ph: 'víkendy, po 16:00…' })}
+   ${oblastHtml(new Set(S.okresy))}
    <button class="btn" type="submit">Uložit profil</button></form>`;
+  zapniOblast();
   const kontrola = () => ({
     vyska: val('vyska') && (val('vyska') < 120 || val('vyska') > 220) ? 'Výška 120–220 cm.' : '',
     bota: val('bota') && (val('bota') < 30 || val('bota') > 50) ? 'Velikost bot 30–50.' : '',
+    oblast: oblastVyber().length ? '' : 'Vyberte aspoň jeden kraj a v něm aspoň jedno město.',
   });
   hlidejPole(kontrola);
   document.getElementById('f').onsubmit = async (e) => {
@@ -233,6 +276,10 @@ function vProfil() {
       jazyky: val('jazyky') ? val('jazyky').split(',').map((x) => x.trim()).filter(Boolean) : [],
       zkusenosti: val('zkusenosti') || null, ridicak: val('ridicak'), vlastni_auto: val('auto'), dostupnost: val('dostupnost') || null });
     if (error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(error)), 'bad'));
+    const nove = oblastVyber(), stare = S.okresy;
+    const pryc = stare.filter((k) => !nove.includes(k)), pribyla = nove.filter((k) => !stare.includes(k));
+    if (pribyla.length) { const r = await sb.from('osoba_okres').insert(pribyla.map((k) => ({ osoba_id: S.osoba.id, okres_kod: k }))); if (r.error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(r.error)), 'bad')); }
+    if (pryc.length) { const r = await sb.from('osoba_okres').delete().eq('osoba_id', S.osoba.id).in('okres_kod', pryc); if (r.error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(r.error)), 'bad')); }
     await nacti(); ukaz('prehled');
   };
 }
