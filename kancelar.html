@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#23201b">
+<meta name="robots" content="noindex, nofollow">
+<title>Vixen – kancelář</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+main{max-width:760px}
+.tik{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:#fff;cursor:pointer}
+.tik small{display:block;color:var(--mute)}
+.zpr{border-left:3px solid var(--line);padding:6px 10px;margin:8px 0;background:#fff;border-radius:0 8px 8px 0}
+.zpr.tbdb{border-left-color:var(--gold)}
+.zpr small{color:var(--mute)}
+.typy label{font-size:14px}
+.pozn{font-size:12.5px;color:var(--mute)}
+.dikt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.mic{border:1px solid var(--gold);background:#fff;color:var(--gold-d);border-radius:20px;padding:7px 14px;font:inherit;font-size:14px;cursor:pointer}
+.mic.nahrava{background:var(--bad);border-color:var(--bad);color:#fff;animation:puls 1.2s infinite}
+@keyframes puls{50%{opacity:.7}}
+</style>
+</head>
+<body>
+<div class="top"><b>VIXEN · KANCELÁŘ</b><span id="kdo" style="color:#ccc;font-size:13px"></span><button id="odhlasit" class="hidden">Odhlásit</button></div>
+<div class="env" id="env"></div>
+<main id="app"><p class="mute">Načítám…</p></main>
+<script src="supabase.js"></script>
+<script src="config.js"></script>
+<script src="kontroly.js"></script>
+<script src="kancelar.js"></script>
+</body>
+</html>
