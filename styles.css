@@ -39,6 +39,7 @@ h2{font-size:18px;margin:18px 0 6px}
 .sum div:nth-child(odd){color:var(--mute)}
 .doc{white-space:pre-wrap;font:13px/1.55 Georgia,serif;background:#fffdf8;border:1px solid var(--line);border-radius:10px;padding:14px;max-height:340px;overflow:auto}
 .code{font-size:28px;letter-spacing:10px;text-align:center;font-weight:700}
+.top #kdo{margin-left:12px}
 .hlava{position:sticky;top:0;z-index:6}.hlava .top{position:static}
 /* navigace krokem nahoře (hosteska) */
 .kroky{display:flex;background:#fff;border-bottom:1px solid var(--line);max-width:100%;overflow-x:auto}
