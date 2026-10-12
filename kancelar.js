@@ -105,7 +105,7 @@ async function vUvod(hlaska) {
   await nactiTikety();
   const otevrene = S.tikety.filter((t) => t.stav !== 'hotovo'), hotove = S.tikety.filter((t) => t.stav === 'hotovo');
   const radek = (t) => `<div class="tik" data-id="${t.id}"><span><b>#${t.cislo} ${esc(t.predmet)}</b>${t.spech ? ' ⚡' : ''}<small>${TYP[t.typ]} · ${esc(t.autor_jmeno)} · ${kdy(t.zmeneno)}</small></span><span class="tag ${STAV[t.stav][1]}">${STAV[t.stav][0]}</span></div>`;
-  $app.innerHTML = `${await menu('dotazy')}<h1>Dobrý den${S.tbdb ? '' : ', ' + esc(S.jmeno)}</h1>
+  $app.innerHTML = `${await menu('dotazy')}<h1>Dobrý den${S.tbdb ? '' : ', ' + esc(K.vokativ(S.jmeno))}</h1>
    ${hlaska || ''}
    <div class="card"><h2 style="margin-top:0">Napište nám (Tbdb)</h2>
     <p class="pozn">Dotaz, problém nebo nápad k aplikaci. Odpovíme tady – uvidíte to v seznamu níže.</p>
@@ -250,7 +250,7 @@ async function zmenStav(o, novy, form) {
     if (r.error) return chybaFormu(form, 'Stav je uložený, poznámka ne: ' + chyba(r.error));
   }
   const jm = esc(`${o.jmeno} ${o.prijmeni}`);
-  const text = { prijata: `${jm} je schválená ✓ Může se přihlásit e-mailem ${esc(o.email)}.`, odmitnuta: `${jm} je mezi odmítnutými.`, uchazec: `${jm} je zpět mezi novými.` }[novy];
+  const text = { prijata: `Přihláška – ${jm}: schváleno ✓ Přihlásí se e-mailem ${esc(o.email)}.`, odmitnuta: `Přihláška – ${jm}: odmítnuto (najdete v Odmítnutých).`, uchazec: `Přihláška – ${jm}: vrácena mezi nové.` }[novy];
   vPrihlasky(o.stav === 'uchazec' ? 'uchazec' : novy === 'uchazec' ? 'uchazec' : novy === 'prijata' ? 'prijate' : 'odmitnute', msg(text));
 }
 

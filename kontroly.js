@@ -65,5 +65,31 @@ const povinne = (v, co) => String(v ?? '').trim() ? '' : `Vyplňte ${co}.`;
 
 const datumCz = (d) => d ? `${d.getUTCDate()}. ${d.getUTCMonth() + 1}. ${d.getUTCFullYear()}` : '';
 const datumIso = (d) => d ? d.toISOString().slice(0, 10) : null;
-window.K = { cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
+
+// 5. pád (oslovení) českých křestních jmen – pravidla podle koncovky + výjimky.
+// Neznámé nebo cizí jméno se nechá beze změny (bezpečnější než špatný tvar).
+const VOK_VYJIMKY = {
+  pavel: 'Pavle', karel: 'Karle', marek: 'Marku', petr: 'Petře', alexandr: 'Alexandře', daniel: 'Danieli', michael: 'Michaeli',
+  samuel: 'Samueli', emanuel: 'Emanueli', rafael: 'Rafaeli', gabriel: 'Gabrieli', izák: 'Izáku', bohumil: 'Bohumile', vít: 'Víte',
+  lev: 'Lve', ota: 'Oto', jiří: 'Jiří', lukáš: 'Lukáši', tomáš: 'Tomáši', ondřej: 'Ondřeji', matěj: 'Matěji', kryštof: 'Kryštofe',
+};
+const VOK_ZENY_NA_SOUHLASKU = new Set(['dagmar', 'ester', 'miriam', 'ingrid', 'karin', 'carmen', 'nikol', 'elen', 'ellen', 'kim', 'sarah', 'ruth', 'judit', 'rut', 'ivet', 'mariam', 'jasmin', 'lilian', 'vivien', 'noemi', 'sofi', 'emily', 'ashley']);
+function vokativ(jmeno) {
+  const j = String(jmeno || '').trim();
+  if (!j || /\s/.test(j) || !/^[A-Za-zÀ-ž'-]+$/.test(j)) return j;
+  const m = j.toLowerCase(), zachovej = (t) => j[0] + t.slice(1);
+  if (VOK_VYJIMKY[m]) return zachovej(VOK_VYJIMKY[m]);
+  if (VOK_ZENY_NA_SOUHLASKU.has(m)) return j;
+  if (/[eěiíyýouůú]$/.test(m)) return j;                    // Lucie, Marie, Jiří, Ondřeji…
+  if (/a$/.test(m)) return j.slice(0, -1) + 'o';             // Tereza→Terezo, Laďka→Laďko, Honza→Honzo
+  if (/[dtn]ěk$/.test(m)) return j.slice(0, -3) + { d: 'ď', t: 'ť', n: 'ň' }[m.slice(-3, -2)] + 'ku'; // Zdeněk→Zdeňku
+  if (/ek$/.test(m)) return j.slice(0, -2) + 'ku';           // Radek→Radku, Zdeněk→Zdeňku
+  if (/ec$/.test(m)) return j.slice(0, -2) + 'če';           // Lubomírec (vzácné)
+  if (/[kgh]$/.test(m) || /ch$/.test(m)) return j + 'u';     // Dominik→Dominiku, Vojtěch→Vojtěchu
+  if (/[šžčřjcť]$/.test(m) || /[^aeiouyáéíóúůý]ď$/.test(m)) return j + 'i'; // Tomáš→Tomáši, Matěj→Matěji
+  if (/[^aeiouyáéíóúůý]r$/.test(m)) return j.slice(0, -1) + 'ře';           // Petr→Petře
+  if (/[bdflmnprstvz]$/.test(m)) return j + 'e';            // Jan→Jane, Jakub→Jakube, Michal→Michale, Josef→Josefe
+  return j;
+}
+window.K = { vokativ, cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
 })();

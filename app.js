@@ -282,7 +282,7 @@ function vPrehled() {
   else if (dalsi === k[1]) ted = `<div class="ted kancelar"><b>Teď čekáte na kancelář</b>Vaši registraci prochází kancelář. Po schválení vám dáme vědět a budete moct pokračovat profilem.</div>`;
   else ted = `<div class="ted konec"><b>Z vaší strany je hotovo ✓</b>Kancelář vás přihlásí na ČSSZ před první akcí. Údaje můžete kdykoli upravit.</div>`;
   const stav = (x) => (x.hotovo ? 'hotovo' : x === dalsi ? 'nyni' : 'budouci');
-  $app.innerHTML = `<h1>Dobrý den, ${esc(S.osoba.jmeno)}</h1>
+  $app.innerHTML = `<h1>Dobrý den, ${esc(K.vokativ(S.osoba.jmeno))}</h1>
    <p class="mute">Vaše cesta k první akci – hotovo ${hotovych} z ${k.length}</p>
    <div class="prubeh"><div style="width:${Math.round((hotovych / k.length) * 100)}%"></div></div>
    ${ted}
