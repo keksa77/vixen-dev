@@ -64,6 +64,8 @@ async function poPrihlaseni() {
   if (!vedeni) { $app.innerHTML = msg('Tento účet nemá přístup do kanceláře. Ozvěte se Tbdb.', 'warn'); return; }
   S.tbdb = !!tbdb; S.nabor = !!nabor; S.vedeni = !!vedeni;
   S.smlouvy = !!(await sb.rpc('ma_pravo', { p: 'smlouvy' })).data;
+  if (S.smlouvy) S.podpisuji = (await sb.from('podpisujici').select('jmeno,opravneni,do_').eq('auth_user_id', user.id).maybeSingle()).data;
+  if (S.podpisuji?.do_ && new Date(S.podpisuji.do_) < new Date()) S.podpisuji = null;
   S.jmeno = (user.user_metadata && user.user_metadata.jmeno) || user.email.split('@')[0];
   if (S.tbdb) S.jmeno += ' (Tbdb)';
   document.getElementById('kdo').textContent = S.jmeno;
@@ -189,11 +191,12 @@ async function vNastenka() {
   const tym = S.lide.filter((o) => ['prijata', 'aktivni'].includes(o.stav));
   const dlazdice = [
     ['y', S.lide.filter((o) => o.stav === 'uchazec').length, 'nových přihlášek', () => vPrihlasky()],
-    ['r', tym.filter((o) => o.udaje && o.dpp !== 'podepsano').length, 'bez podepsané smlouvy (údaje mají)', () => lideFiltr({ udaje: 'ano', dpp: 'ne' })],
+    ['r', tym.filter((o) => o.dpp === 'ceka_vixen').length, 'smluv čeká na váš podpis', () => lideFiltr({ dpp: 'vixen' })],
+    ['r', tym.filter((o) => o.udaje && !dppOk(o) && o.dpp !== 'ceka_vixen').length, 'bez uzavřené smlouvy (údaje mají)', () => lideFiltr({ udaje: 'ano', dpp: 'ne' })],
     ['y', tym.filter((o) => !o.udaje).length, 'bez údajů pro smlouvu', () => lideFiltr({ udaje: 'ne' })],
     ['y', tym.filter((o) => !o.ma_profil).length, 'bez profilu', () => lideFiltr({ profil: 'ne' })],
     ['y', tym.filter((o) => !o.fotky.length).length, 'bez fotky', () => lideFiltr({ foto: 'ne' })],
-    ['g', tym.filter((o) => o.dpp === 'podepsano').length, 'připraveno s podepsanou DPP', () => lideFiltr({ dpp: 'ano' })],
+    ['g', tym.filter(dppOk).length, 'připraveno s uzavřenou DPP', () => lideFiltr({ dpp: 'ano' })],
   ];
   $app.innerHTML = `${await menu('nastenka')}<h1>Dnes je potřeba</h1><p class="mute">Počítá se z přijatých a aktivních lidí (${tym.length}). Kliknutím na dlaždici otevřete seznam.</p>
    <div class="tiles">${dlazdice.map(([c, n, t], i) => `<button class="tile ${n ? c : 'g'}" data-i="${i}"><div class="n">${n}</div>${t}</button>`).join('')}
@@ -291,6 +294,9 @@ try { const ul = JSON.parse(localStorage.getItem('vixen_lide_filtr') || 'null');
 const ulozF = () => { try { localStorage.setItem('vixen_lide_filtr', JSON.stringify(F)); } catch {} };
 const bezDiakritiky = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const datum = (d) => (d ? new Date(d).toLocaleDateString('cs-CZ') : '');
+// stav DPP z kancelar_lide: ceka_vixen | ceka_hosteska | neodeslano | lhuta | uzavreno | odstoupeno
+const dppOk = (o) => o.dpp === 'lhuta' || o.dpp === 'uzavreno';
+const DPP_TXT = { ceka_vixen: 'čeká na podpis Vixen', ceka_hosteska: 'čeká na podpis hostesky', neodeslano: 'podepsáno, PDF neodešlo', lhuta: 'uzavřeno – běží 7 dní na odstoupení', uzavreno: 'uzavřeno', odstoupeno: 'hosteska odstoupila' };
 const krajeOsoby = (o) => [...new Set(o.okresy.map((k) => S.cis.okres[k]?.kraj_kod).filter(Boolean))];
 S.fotoUrl = S.fotoUrl || {};
 
@@ -344,7 +350,7 @@ function filtruj() {
     if (F.jazyk && !(p.jazyky || []).some((j) => bezDiakritiky(j).includes(bezDiakritiky(F.jazyk)))) return false;
     if (F.ridicak && !p.ridicak) return false;
     if (F.auto && !p.vlastni_auto) return false;
-    if (!tri(o.ma_profil, F.profil) || !tri(o.udaje, F.udaje) || !tri(o.dpp === 'podepsano', F.dpp)) return false;
+    if (!tri(o.ma_profil, F.profil) || !tri(o.udaje, F.udaje) || (F.dpp === 'vixen' ? o.dpp !== 'ceka_vixen' : !tri(dppOk(o), F.dpp))) return false;
     if (num(F.vekOd) && !(o.vek >= num(F.vekOd))) return false;
     if (num(F.vekDo) && !(o.vek <= num(F.vekDo))) return false;
     if (F.regOd && new Date(o.vytvoreno) < new Date(F.regOd)) return false;
@@ -352,9 +358,9 @@ function filtruj() {
   });
 }
 const RAD = {
-  profil: (o) => (o.ma_profil ? 1 : 0), udaje: (o) => (o.udaje ? 1 : 0), dpp: (o) => (o.dpp === 'podepsano' ? 2 : o.dpp ? 1 : 0),
+  profil: (o) => (o.ma_profil ? 1 : 0), udaje: (o) => (o.udaje ? 1 : 0), dpp: (o) => (dppOk(o) ? 2 : o.dpp ? 1 : 0),
   jmeno: (o) => bezDiakritiky(o.prijmeni + ' ' + o.jmeno), stav: (o) => o.stav, vyska: (o) => o.profil?.vyska_cm ?? 0, foto: (o) => o.fotky.length,
-  vek: (o) => o.vek ?? 0, reg: (o) => o.vytvoreno, podklady: (o) => (o.ma_profil ? 1 : 0) + (o.udaje ? 1 : 0) + (o.dpp === 'podepsano' ? 1 : 0),
+  vek: (o) => o.vek ?? 0, reg: (o) => o.vytvoreno, podklady: (o) => (o.ma_profil ? 1 : 0) + (o.udaje ? 1 : 0) + (dppOk(o) ? 1 : 0),
 };
 const serad = (l) => [...l].sort((a, b) => { const x = RAD[RAZENI.k](a), y = RAD[RAZENI.k](b); return (x > y ? 1 : x < y ? -1 : 0) * RAZENI.smer; });
 
@@ -400,7 +406,7 @@ async function vLide(hlaska = '') {
      <td><input data-f="jazyk" type="search" placeholder="jazyk" value="${esc(F.jazyk)}"><details class="vf" data-vf="jazykx"><summary></summary><div class="vf-panel"><b>Doprava</b>
        <label><input type="checkbox" data-f="ridicak"${F.ridicak ? ' checked' : ''}> řidičák</label><label><input type="checkbox" data-f="auto"${F.auto ? ' checked' : ''}> vlastní auto</label></div></details></td>
      <td><div class="od-do"><input data-f="vekOd" type="number" placeholder="od" value="${esc(F.vekOd)}"><input data-f="vekDo" type="number" placeholder="do" value="${esc(F.vekDo)}"></div></td>
-     ${['profil', 'udaje', 'dpp'].map((k) => `<td><select data-f="${k}" class="mini-sel"><option value="">vše</option><option value="ano"${F[k] === 'ano' ? ' selected' : ''}>●&nbsp;má</option><option value="ne"${F[k] === 'ne' ? ' selected' : ''}>○&nbsp;chybí</option></select></td>`).join('')}<td></td>
+     ${['profil', 'udaje', 'dpp'].map((k) => `<td><select data-f="${k}" class="mini-sel"><option value="">vše</option><option value="ano"${F[k] === 'ano' ? ' selected' : ''}>●&nbsp;má</option><option value="ne"${F[k] === 'ne' ? ' selected' : ''}>○&nbsp;chybí</option>${k === 'dpp' ? `<option value="vixen"${F.dpp === 'vixen' ? ' selected' : ''}>✍&nbsp;čeká na Vixen</option>` : ''}</select></td>`).join('')}<td></td>
      <td><input data-f="regOd" type="date" title="Registrace od" value="${esc(F.regOd)}"></td>
     </tr></thead><tbody id="telo"></tbody></table></div>
    <div id="strany"></div>
@@ -431,7 +437,7 @@ function vykresliTabulku() {
   document.getElementById('pocet').textContent = `${vse.length} z ${S.lide.length}`;
   const shrn = [F.text && `„${F.text}“`, F.stav.length && F.stav.map((k) => STAV_O[k][0]).join('+'), F.kraje.length && F.kraje.map((k) => S.cis.kraj[k]).join(', '), F.okres && S.cis.okres[F.okres]?.mesto,
     F.zajem.length && F.zajem.map((k) => ZAJEM[k]).join('+'), (F.vyskaOd || F.vyskaDo) && `výška ${F.vyskaOd || '…'}–${F.vyskaDo || '…'}`, F.jazyk, F.foto && (F.foto === 'ano' ? 's fotkou' : 'bez fotky'),
-    F.profil && `profil ${F.profil === 'ano' ? 'má' : 'chybí'}`, F.udaje && `údaje ${F.udaje === 'ano' ? 'má' : 'chybí'}`, F.dpp && `DPP ${F.dpp === 'ano' ? 'má' : 'chybí'}`].filter(Boolean);
+    F.profil && `profil ${F.profil === 'ano' ? 'má' : 'chybí'}`, F.udaje && `údaje ${F.udaje === 'ano' ? 'má' : 'chybí'}`, F.dpp && `DPP ${F.dpp === 'ano' ? 'má' : F.dpp === 'vixen' ? 'čeká na podpis Vixen' : 'chybí'}`].filter(Boolean);
   document.getElementById('shrnuti').textContent = shrn.length ? 'filtr: ' + shrn.join(' · ') : 'bez filtru';
   $app.querySelectorAll('thead th.raz').forEach((t) => { t.classList.toggle('on', RAZENI.k === t.dataset.k); t.querySelector('i').textContent = RAZENI.k === t.dataset.k ? (RAZENI.smer > 0 ? ' ▲' : ' ▼') : ''; });
   const tecka = (c, t) => `<span class="tecka ${c}" title="${t}: ${c === 'ok' ? 'hotovo' : c === 'wa' ? 'čeká' : c === 'no' ? 'chybí' : '–'}">●</span>`;
@@ -450,7 +456,7 @@ function vykresliTabulku() {
      <td>${esc((p.jazyky || []).join(', ')) || '–'}<small>${p.ridicak ? 'řidičák' : ''}${p.vlastni_auto ? ' · auto' : ''}</small></td>
      <td>${o.vek ?? '–'}</td>
      <td class="semf">${tecka(o.ma_profil ? 'ok' : 'no', 'Profil')}</td><td class="semf">${tecka(o.udaje ? 'ok' : 'no', 'Údaje pro smlouvu')}</td>
-     <td class="semf">${tecka(o.dpp === 'podepsano' ? 'ok' : o.dpp === 'k_podpisu' ? 'wa' : 'no', o.dpp === 'k_podpisu' ? 'DPP čeká na podpis' : 'DPP')}</td><td class="semf">${tecka('', 'ČSSZ – připravujeme')}</td>
+     <td class="semf">${tecka(o.dpp === 'uzavreno' ? 'ok' : o.dpp && o.dpp !== 'odstoupeno' ? 'wa' : 'no', o.dpp ? 'DPP – ' + DPP_TXT[o.dpp] : 'DPP')}</td><td class="semf">${tecka('', 'ČSSZ – připravujeme')}</td>
      <td>${datum(o.vytvoreno)}</td></tr>`;
   };
   const telo = document.getElementById('telo');
@@ -508,7 +514,7 @@ function exportCsv(osoby) {
   const r = osoby.map((o) => { const p = o.profil || {}; return [o.prijmeni, o.jmeno, o.telefon, o.email, o.obec, STAV_O[o.stav][0], krajeOsoby(o).map((k) => S.cis.kraj[k]).join(', '),
     o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '), (o.zajem || []).map((z) => ZAJEM[z] || z).join(', '), (o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '),
     p.vyska_cm || '', p.konfekce || '', p.bota_eu || '', (p.jazyky || []).join(', '), p.ridicak ? 'ano' : '', p.vlastni_auto ? 'ano' : '', p.dostupnost || '', o.vek ?? '',
-    o.ma_profil ? 'ano' : 'ne', o.udaje ? 'ano' : 'ne', o.dpp === 'podepsano' ? datum(o.dpp_at) : 'ne', datum(o.vytvoreno)]; });
+    o.ma_profil ? 'ano' : 'ne', o.udaje ? 'ano' : 'ne', dppOk(o) ? datum(o.dpp_at) : (DPP_TXT[o.dpp] || 'ne'), datum(o.vytvoreno)]; });
   const csv = '﻿' + [h, ...r].map((x) => x.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `vixen_lide_${new Date().toISOString().slice(0, 10)}.csv`; document.body.append(a); a.click(); a.remove();
@@ -531,7 +537,7 @@ async function vDetailOsoby(id) {
    <section><h3>Profil</h3>${o.ma_profil ? `<dl><dt>Výška</dt><dd>${p.vyska_cm ? p.vyska_cm + ' cm' : '–'}</dd><dt>Konfekce / bota</dt><dd>${esc(p.konfekce || '–')} / ${p.bota_eu || '–'}</dd>
      <dt>Jazyky</dt><dd>${esc((p.jazyky || []).join(', ') || '–')}</dd><dt>Řidičák / auto</dt><dd>${p.ridicak ? 'ano' : 'ne'} / ${p.vlastni_auto ? 'ano' : 'ne'}</dd>
      <dt>Dostupnost</dt><dd>${esc(p.dostupnost || '–')}</dd><dt>Zkušenosti</dt><dd>${esc(p.zkusenosti || '–')}</dd></dl>` : '<p class="mute">Zatím nevyplnila.</p>'}</section>
-   <section><h3>Smlouva a podklady</h3><div id="det-smlouva"><p class="mute">${S.smlouvy ? 'Načítám…' : `Údaje pro smlouvu: <b>${o.udaje ? 'potvrzené' : 'chybí'}</b> · DPP: <b>${o.dpp === 'podepsano' ? 'podepsaná ' + datum(o.dpp_at) : o.dpp === 'k_podpisu' ? 'čeká na podpis' : 'zatím ne'}</b><br>Podrobnosti vidí jen role Smlouvy.`}</p></div></section>
+   <section><h3>Smlouva a podklady</h3><div id="det-smlouva"><p class="mute">${S.smlouvy ? 'Načítám…' : `Údaje pro smlouvu: <b>${o.udaje ? 'potvrzené' : 'chybí'}</b> · DPP: <b>${o.dpp ? DPP_TXT[o.dpp] + (o.dpp_at ? ' (' + datum(o.dpp_at) + ')' : '') : 'zatím ne'}</b><br>Podrobnosti vidí jen role Smlouvy.`}</p></div></section>
    <section><h3>Stav a poznámka</h3><form id="det-f" novalidate>
     <div class="fld"><label>Stav</label><select id="det-stav">${Object.entries(STAV_O).map(([k, v]) => `<option value="${k}"${k === o.stav ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></div>
     <div class="fld"><label>Interní poznámka (hosteska ji neuvidí)</label><textarea id="det-pozn" rows="3">${esc(o.pozn)}</textarea></div>
@@ -558,7 +564,7 @@ async function detailSmlouva(o) {
   const box = document.getElementById('det-smlouva');
   const [{ data: n }, { data: dok }] = await Promise.all([
     sb.from('osoba_nastup').select('*').eq('osoba_id', o.id).maybeSingle(),
-    sb.from('dokument').select('id,stav,vytvoreno,podepsano_at,podpis,dokument_sablona(nazev,druh)').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }),
+    sb.from('dokument').select('id,stav,obsah,vytvoreno,podepsano_at,podpis,vixen_podepsano_at,vixen_podpis,odeslano_at,odeslano_na,odstoupeni_do,odstoupeno_at,pdf_cesta,dokument_sablona(nazev,druh)').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }),
   ]);
   if (!box) return;
   const skryj = (t) => (t ? String(t).slice(0, 2) + '••••' + String(t).slice(-2) : '–');
@@ -574,11 +580,53 @@ async function detailSmlouva(o) {
     : '<p class="mute">Údaje pro smlouvu zatím nevyplnila.</p>';
   const ukaz = document.getElementById('ukaz-citl');
   if (ukaz) ukaz.onclick = () => { box.querySelectorAll('.citl').forEach((s) => (s.textContent = s.dataset.plne)); ukaz.remove(); };
-  const DS = { k_podpisu: ['čeká na podpis', 't-w'], podepsano: ['podepsáno', 't-ok'], zruseno: ['zrušeno', 't-b'] };
-  box.insertAdjacentHTML('beforeend', `<h4>Dokumenty</h4>${(dok || []).map((x) => `<div class="dok-r"><span>${esc(x.dokument_sablona?.nazev || 'Dokument')}<small>${datum(x.vytvoreno)}${x.podepsano_at ? ' · podepsáno ' + datum(x.podepsano_at) + (x.podpis?.zpusob ? ' (' + esc(x.podpis.zpusob) + ')' : '') : ''}</small></span><span class="tag ${DS[x.stav][1]}">${DS[x.stav][0]}</span></div>`).join('') || '<p class="mute">Žádné.</p>'}
-    ${n?.potvrzeno_at && !(dok || []).some((x) => x.dokument_sablona?.druh === 'dpp' && x.stav !== 'zruseno') ? '<button class="btn o mini" id="pripr-dpp">Připravit DPP k podpisu</button>' : ''}`);
+  const kdy = (t) => (t ? new Date(t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+  const stav = (x) => x.stav === 'zruseno' ? ['zrušeno', 't-b'] : x.odstoupeno_at ? ['hosteska odstoupila ' + datum(x.odstoupeno_at), 't-b']
+    : x.stav === 'k_podpisu' ? (x.vixen_podepsano_at ? ['čeká na podpis hostesky', 't-w'] : ['čeká na podpis Vixen', 't-r'])
+    : !x.odeslano_at ? ['podepsáno – PDF neodešlo', 't-w']
+    : new Date(x.odstoupeni_do) > new Date() ? ['uzavřeno · odstoupení možné do ' + datum(x.odstoupeni_do), 't-ok'] : ['uzavřeno', 't-ok'];
+  const radek = (x) => { const [t, c] = stav(x); return `<div class="dok-r" data-id="${x.id}"><span>${esc(x.dokument_sablona?.nazev || 'Dokument')}<small>připraveno ${datum(x.vytvoreno)}
+      ${x.vixen_podepsano_at ? ' · Vixen: ' + esc(x.vixen_podpis?.jmeno || '') + ' ' + kdy(x.vixen_podepsano_at) : ''}
+      ${x.podepsano_at ? ' · hosteska: ' + kdy(x.podepsano_at) + (x.podpis?.zpusob ? ' (' + esc(x.podpis.zpusob) + ')' : '') : ''}
+      ${x.odeslano_at ? ' · PDF posláno ' + kdy(x.odeslano_at) + ' na ' + esc(x.odeslano_na || '') : ''}</small>
+      <span class="dok-akce">${x.stav === 'k_podpisu' && !x.vixen_podepsano_at ? (S.podpisuji ? '<button class="btn mini podp-v">Zkontrolovat a podepsat za Vixen</button>' : '<small class="no">Podepsat smí jen oprávněná osoba (Laďka, Linda).</small>') : ''}
+      ${x.stav === 'podepsano' && x.vixen_podepsano_at && !x.odeslano_at && !x.odstoupeno_at ? '<button class="btn o mini posl">Odeslat PDF hostesce</button>' : ''}
+      ${x.pdf_cesta ? '<a href="#" class="pdf">Stáhnout PDF</a>' : ''}</span></span><span class="tag ${c}">${t}</span><div class="m3"></div></div>`; };
+  box.insertAdjacentHTML('beforeend', `${n ? `<dl><dt>E-mail pro smlouvy</dt><dd>${n.email_smlouvy ? esc(n.email_smlouvy) + (n.email_smlouvy_souhlas_at ? ' · souhlas ' + datum(n.email_smlouvy_souhlas_at) : '') : '<span class="no">chybí – hosteska ho doplní v Údajích</span>'}</dd></dl>` : ''}
+    <h4>Dokumenty</h4>${(dok || []).map(radek).join('') || '<p class="mute">Žádné.</p>'}
+    ${n?.potvrzeno_at && !(dok || []).some((x) => x.dokument_sablona?.druh === 'dpp' && x.stav !== 'zruseno' && !x.odstoupeno_at) ? '<button class="btn o mini" id="pripr-dpp">Připravit DPP k podpisu</button>' : ''}`);
   const pd = document.getElementById('pripr-dpp');
-  if (pd) pd.onclick = async () => { pd.disabled = true; const { error } = await sb.rpc('dokument_priprav', { p_osoba: o.id, p_druh: 'dpp' }); if (error) { pd.disabled = false; return pd.insertAdjacentHTML('afterend', msg(esc(chyba(error)), 'bad')); } detailSmlouva(o); };
+  if (pd) pd.onclick = async () => { pd.disabled = true; const { error } = await sb.rpc('dokument_priprav', { p_osoba: o.id, p_druh: 'dpp' }); if (error) { pd.disabled = false; return pd.insertAdjacentHTML('afterend', msg(esc(chyba(error)), 'bad')); } detailSmlouva(o); obnovStavDpp(o); };
+  box.querySelectorAll('.dok-r').forEach((r) => {
+    const x = (dok || []).find((d) => d.id === r.dataset.id), m3 = (t, typ) => (r.querySelector('.m3').innerHTML = msg(t, typ));
+    const pv = r.querySelector('.podp-v');
+    if (pv) pv.onclick = () => {
+      r.querySelector('.m3').innerHTML = `<div class="podpis-v"><div class="doc">${esc(x.obsah || '')}</div>
+        <label class="chk"><input type="checkbox" class="pv-ok"><span>Zkontrolovala jsem text a údaje a podepisuji smlouvu za zaměstnavatele jako <b>${esc(S.podpisuji.jmeno)}</b> – ${esc(S.podpisuji.opravneni)}.</span></label>
+        <button class="btn g mini pv-go" disabled>Podepsat za Vixen</button> <button class="btn o mini pv-zrus">Zrušit</button></div>`;
+      pv.disabled = true;
+      r.querySelector('.pv-ok').onchange = (e) => (r.querySelector('.pv-go').disabled = !e.target.checked);
+      r.querySelector('.pv-zrus').onclick = () => { r.querySelector('.m3').innerHTML = ''; pv.disabled = false; };
+      r.querySelector('.pv-go').onclick = async (e) => { e.target.disabled = true;
+        const { error } = await sb.rpc('podpis_vixen', { p_dokument: x.id, p_prohlizec: navigator.userAgent.slice(0, 200) });
+        if (error) { e.target.disabled = false; return m3(esc(chyba(error)), 'bad'); }
+        detailSmlouva(o); obnovStavDpp(o); };
+    };
+    const ps = r.querySelector('.posl');
+    if (ps) ps.onclick = async () => { ps.disabled = true; m3('Připravuji PDF a posílám…', 'warn');
+      const { data, error } = await sb.functions.invoke('smlouva-odeslat', { body: { dokument_id: x.id } });
+      if (error || data?.chyba) { ps.disabled = false; return m3(esc(data?.chyba || chyba(error)), 'bad'); }
+      detailSmlouva(o); obnovStavDpp(o); };
+    const pf = r.querySelector('.pdf');
+    if (pf) pf.onclick = async (e) => { e.preventDefault(); const { data, error } = await sb.storage.from('dokumenty').createSignedUrl(x.pdf_cesta, 120);
+      if (error) return m3(esc(chyba(error)), 'bad'); window.open(data.signedUrl, '_blank'); };
+  });
+}
+// po změně smlouvy v detailu obnovit stav DPP v přehledu (tečky, nástěnka)
+async function obnovStavDpp(o) {
+  const { data } = await sb.rpc('kancelar_lide');
+  const s = (data || []).find((x) => x.osoba_id === o.id); if (!s) return;
+  o.dpp = s.dpp_stav || ''; o.dpp_at = s.dpp_podepsano_at || null;
 }
 
 async function detailHistorie(o) {

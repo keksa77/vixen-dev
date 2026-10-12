@@ -259,7 +259,7 @@ async function nacti() {
     sb.from('osoba').select('*').single(),
     sb.from('osoba_profil').select('*').maybeSingle(),
     sb.from('osoba_nastup').select('*').maybeSingle(),
-    sb.from('dokument').select('id,stav,obsah,vytvoreno,podepsano_at,podpis,dokument_sablona(nazev,druh)').order('vytvoreno', { ascending: false }),
+    sb.from('dokument').select('id,stav,obsah,vytvoreno,podepsano_at,podpis,vixen_podepsano_at,vixen_podpis,odeslano_at,odeslano_na,odstoupeni_do,odstoupeno_at,pdf_cesta,dokument_sablona(nazev,druh)').order('vytvoreno', { ascending: false }),
     sb.from('osoba_okres').select('okres_kod'),
     sb.from('osoba_foto').select('id,cesta,poradi').order('poradi'),
   ]);
@@ -286,7 +286,9 @@ function kroky() {
     { t: 'Schválení kanceláří', kdo: 'kanc', hotovo: ok, popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata' : 'kancelář projde vaši registraci' },
     { t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil, popis: 'fotka, výška, konfekce, jazyky, kdy můžete', tlac: 'Doplnit profil' },
     { t: 'Údaje pro smlouvu', v: 'nastup', kdo: 'vy', hotovo: !!S.nastup?.potvrzeno_at, popis: 'rodné číslo, adresa, pojišťovna, účet', tlac: 'Vyplnit údaje' },
-    { t: 'Podpis smlouvy (DPP)', v: 'dokumenty', kdo: 'vy', hotovo: dpp?.stav === 'podepsano', popis: dpp && dpp.stav !== 'podepsano' ? 'smlouva čeká na váš podpis' : 'přečíst a podepsat kódem', tlac: dpp ? 'Podepsat smlouvu' : 'Připravit smlouvu' },
+    dpp && dpp.stav === 'k_podpisu' && !dpp.vixen_podepsano_at
+      ? { t: 'Podpis smlouvy (DPP)', v: 'dokumenty', kdo: 'kanc', hotovo: false, popis: 'smlouvu teď podepisuje Vixen, pak vy' }
+      : { t: 'Podpis smlouvy (DPP)', v: 'dokumenty', kdo: 'vy', hotovo: dpp?.stav === 'podepsano' && !dpp.odstoupeno_at, popis: dpp?.stav === 'k_podpisu' ? 'Vixen podepsal – smlouva čeká na váš podpis' : dpp?.odeslano_at ? 'podepsaná smlouva přišla na váš e-mail' : 'přečíst a podepsat kódem', tlac: dpp ? 'Podepsat smlouvu' : 'Připravit smlouvu' },
     { t: 'Přihlášení na ČSSZ', kdo: 'kanc', hotovo: false, popis: 'kancelář vás přihlásí před první akcí' },
   ];
 }
@@ -396,6 +398,7 @@ function vProfil() {
 }
 
 // ---------- krok 4: údaje pro smlouvu ----------
+const SOUHLAS_SML = 'Tento e-mail je můj soukromý (ne pracovní ani sdílený) a souhlasím, aby na něj Vixen posílal smlouvy a dohody k elektronickému uzavření.';
 function vNastup(predvypln) {
   if (!schvalena()) return ($app.innerHTML = '<h1>Údaje pro smlouvu</h1>' + msg('Údaje půjde doplnit po schválení registrace.', 'warn'));
   const n = predvypln || S.nastup || { obcanstvi: 'CZ', danova_rezidence: 'CZ', stat_bydliste: 'CZ', rodne_prijmeni: S.osoba.prijmeni };
@@ -423,6 +426,9 @@ function vNastup(predvypln) {
    <div class="row">${pole('pred', 'Předčíslí', n.ucet_predcisli || '', { im: 'numeric' })}${pole('ucet', 'Číslo účtu', n.ucet_cislo || '', { im: 'numeric' })}</div>
    ${pole('banka', 'Banka', '', { select: opt(S.cis.banka, bankaJina ? 'jina' : n.ucet_banka, '— vyberte —') + `<option value="jina"${bankaJina ? ' selected' : ''}>Jiná banka – zadám kód</option>` })}
    ${pole('kod_banky', 'Kód banky', bankaJina ? n.ucet_banka : '', { im: 'numeric', ph: '4 číslice', cls: 'kodb' })}
+   <h2>E-mail pro smlouvy</h2>
+   ${pole('email_sml', 'Soukromý e-mail pro smlouvy', n.email_smlouvy || S.osoba.email || '', { typ: 'email', ac: 'email', hint: 'Sem vám pošleme podepsanou smlouvu v PDF. Doručením je smlouva uzavřená.' })}
+   <div class="fld" data-f="souhlas_sml"><label class="chk"><input type="checkbox" id="souhlas_sml" ${n.email_smlouvy_souhlas_at ? 'checked' : ''}> ${SOUHLAS_SML}</label><div class="err"></div></div>
    <h2>Ještě dvě otázky</h2>
    <label class="chk"><input type="checkbox" id="duchod" ${n.predcasny_duchod ? 'checked' : ''}> Pobírám předčasný starobní důchod</label>
    <label class="chk"><input type="checkbox" id="up" ${n.vedena_na_up ? 'checked' : ''}> Jsem vedená na úřadu práce</label>
@@ -454,6 +460,8 @@ function vNastup(predvypln) {
       zahr_id: val('rezidence') !== 'CZ' ? K.povinne(val('zahr_id'), 'daňový identifikátor') : '',
       pred: u.startsWith('Předčíslí') ? u : '', ucet: u && !u.startsWith('Předčíslí') && !u.includes('banky') ? u : '',
       banka: val('banka') === 'jina' ? '' : (u.includes('banky') ? u : ''), kod_banky: val('banka') === 'jina' && u.includes('banky') ? u : '',
+      email_sml: K.emailChyba(val('email_sml')),
+      souhlas_sml: val('souhlas_sml') ? '' : 'Bez souhlasu nejde smlouvu podepsat v aplikaci.',
     };
   };
   hlidejPole(kontrola);
@@ -466,6 +474,9 @@ function vNastup(predvypln) {
       zdravotni_pojistovna: val('zp') || null, danova_rezidence: val('rezidence'), zahr_dan_id: val('rezidence') !== 'CZ' ? val('zahr_id') : null,
       ucet_predcisli: K.cisla(val('pred')) || null, ucet_cislo: K.cisla(val('ucet')), ucet_banka: kodBanky(),
       predcasny_duchod: val('duchod'), vedena_na_up: val('up'),
+      email_smlouvy: val('email_sml').toLowerCase(),
+      email_smlouvy_souhlas_at: n.email_smlouvy_souhlas_at && (n.email_smlouvy || '') === val('email_sml').toLowerCase() ? n.email_smlouvy_souhlas_at : new Date().toISOString(),
+      email_smlouvy_souhlas_text: SOUHLAS_SML,
     });
   };
 }
@@ -481,6 +492,7 @@ function vSouhrn(n) {
     ['Korespondenční adresa', n.koresp_adresa || 'stejná'], ['Zdravotní pojišťovna', nazev(S.cis.zp, n.zdravotni_pojistovna)],
     ['Daňová rezidence', nazev(S.cis.stat, n.danova_rezidence) + (n.zahr_dan_id ? ' (' + n.zahr_dan_id + ')' : '')],
     ['Účet', (n.ucet_predcisli ? n.ucet_predcisli + '-' : '') + n.ucet_cislo + '/' + n.ucet_banka],
+    ['E-mail pro smlouvy', n.email_smlouvy + ' (souhlas s elektronickým uzavíráním)'],
     ['Předčasný důchod', n.predcasny_duchod ? 'ano' : 'ne'], ['Úřad práce', n.vedena_na_up ? 'ano' : 'ne'],
   ];
   const meniPodepsane = S.dokumenty.some((d) => d.stav === 'podepsano');
@@ -502,25 +514,72 @@ function vSouhrn(n) {
   };
 }
 
-// ---------- krok 5: dokumenty a podpis ----------
+// ---------- krok 5: smlouva – podpis Vixen → podpis hostesky → PDF na soukromý e-mail → 7 dní na odstoupení ----------
+const kdyCz = (t) => (t ? new Date(t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+const denCz = (t) => (t ? new Date(t).toLocaleDateString('cs-CZ') : '');
+function stahniPdf(b64, soubor) {
+  const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([u], { type: 'application/pdf' })); a.download = soubor || 'smlouva.pdf'; a.click();
+}
+async function odesliSmlouvu(dok, m) {
+  m('Připravuji PDF a posílám ho na váš e-mail…', 'warn');
+  const { data, error } = await sb.functions.invoke('smlouva-odeslat', { body: { dokument_id: dok.id } });
+  if (error || data?.chyba) { m(esc(data?.chyba || chybaText(error)) + ' Zkuste to prosím znovu tlačítkem níže.', 'bad'); return false; }
+  if (data.dev) { m(`VÝVOJ: e-mail neodešel (SMTP pro funkce není nastavené). <a href="#" id="pdf-dev">Stáhnout PDF</a>`, 'warn');
+    document.getElementById('pdf-dev').onclick = (e) => { e.preventDefault(); stahniPdf(data.pdf_base64, data.soubor); }; }
+  else m(`Podepsanou smlouvu jsme poslali na ${esc(data.na)}. Doručením je smlouva uzavřená.`);
+  return true;
+}
+function stavSmlouvy(d) {
+  if (d.odstoupeno_at) return ['odstoupeno ' + denCz(d.odstoupeno_at), 't-b'];
+  if (!d.odeslano_at) return ['podepsáno – PDF ještě neodešlo', 't-w'];
+  if (new Date(d.odstoupeni_do) > new Date()) return ['uzavřeno · odstoupit lze do ' + denCz(d.odstoupeni_do), 't-ok'];
+  return ['uzavřeno', 't-ok'];
+}
 function vDokumenty() {
-  if (!S.nastup?.potvrzeno_at) return ($app.innerHTML = '<h1>Dokumenty</h1>' + msg('Nejdřív prosím vyplňte a potvrďte údaje pro smlouvu.', 'warn') + '<button class="btn" id="n">Vyplnit údaje</button>', document.getElementById('n').onclick = () => ukaz('nastup'));
+  if (!S.nastup?.potvrzeno_at) return ($app.innerHTML = '<h1>Smlouva</h1>' + msg('Nejdřív prosím vyplňte a potvrďte údaje pro smlouvu.', 'warn') + '<button class="btn" id="n">Vyplnit údaje</button>', document.getElementById('n').onclick = () => ukaz('nastup'));
+  const bezSouhlasu = !S.nastup.email_smlouvy || !S.nastup.email_smlouvy_souhlas_at;
   const kPodpisu = S.dokumenty.find((d) => d.stav === 'k_podpisu');
-  const dppPodepsana = S.dokumenty.find((d) => d.stav === 'podepsano' && d.dokument_sablona?.druh === 'dpp');
+  const dppPodepsana = S.dokumenty.find((d) => d.stav === 'podepsano' && d.dokument_sablona?.druh === 'dpp' && !d.odstoupeno_at);
   const potrebaNova = dppPodepsana && new Date(S.nastup.zmeneno || S.nastup.potvrzeno_at) > new Date(dppPodepsana.podepsano_at);
-  $app.innerHTML = `<h1>Dokumenty</h1>
-   ${kPodpisu ? `<div class="card"><h2 style="margin-top:0">${esc(kPodpisu.dokument_sablona?.nazev)}</h2>
-      <p class="mute">Přečtěte si dokument. Vaše údaje jsou doplněné automaticky.</p>
+  const vixen = kPodpisu?.vixen_podpis;
+  let hlavni = '';
+  if (bezSouhlasu) hlavni = msg('Pro podpis v aplikaci potřebujeme váš soukromý e-mail – pošleme na něj podepsanou smlouvu. Doplňte ho prosím v Údajích.', 'warn') + '<button class="btn" id="n">Doplnit e-mail</button>';
+  else if (kPodpisu && !kPodpisu.vixen_podepsano_at) hlavni = `<div class="card"><h2 style="margin-top:0">${esc(kPodpisu.dokument_sablona?.nazev)}</h2>
+      ${msg('Smlouvu teď kontroluje a podepisuje Vixen. Jakmile ji podepíše, podepíšete ji tady i vy – dáme vám vědět.', 'warn')}
+      <details><summary>Náhled smlouvy</summary><div class="doc">${esc(kPodpisu.obsah)}</div></details></div>`;
+  else if (kPodpisu) hlavni = `<div class="card"><h2 style="margin-top:0">${esc(kPodpisu.dokument_sablona?.nazev)}</h2>
+      <p class="mute">Za Vixen podepsala <b>${esc(vixen?.jmeno || '')}</b> ${kdyCz(kPodpisu.vixen_podepsano_at)}. Přečtěte si smlouvu – vaše údaje jsou doplněné automaticky.</p>
       <div class="doc">${esc(kPodpisu.obsah)}</div>
-      <label class="chk"><input type="checkbox" id="precteno"> Dokument jsem přečetla a údaje v něm jsou správné.</label>
+      <label class="chk"><input type="checkbox" id="precteno"> Smlouvu jsem přečetla a údaje v ní jsou správné.</label>
+      <p class="mute">Po podpisu pošleme podepsané PDF na <b>${esc(S.nastup.email_smlouvy)}</b>. Doručením je smlouva uzavřená; do 7 dnů od ní můžete odstoupit, pokud jste ještě nezačala pracovat.</p>
       <div id="m"></div>
       <button class="btn" id="kod" disabled>Podepsat – poslat kód e-mailem</button>
-      <div id="zadat" class="hidden">${pole('k', 'Kód z e-mailu (6 číslic)', '', { im: 'numeric', ac: 'one-time-code' })}<button class="btn g" id="podepsat">Podepsat</button></div></div>`
-    : (!dppPodepsana || potrebaNova ? `<button class="btn" id="pripravit">${potrebaNova ? 'Připravit novou verzi smlouvy' : 'Připravit smlouvu (DPP)'}</button><div id="m"></div>` : '')}
+      <div id="zadat" class="hidden">${pole('k', 'Kód z e-mailu (6 číslic)', '', { im: 'numeric', ac: 'one-time-code' })}<button class="btn g" id="podepsat">Podepsat</button></div></div>`;
+  else if (!dppPodepsana || potrebaNova) hlavni = `<button class="btn" id="pripravit">${potrebaNova ? 'Připravit novou verzi smlouvy' : 'Připravit smlouvu (DPP)'}</button><div id="m"></div>`;
+  const podepsane = S.dokumenty.filter((d) => d.stav === 'podepsano');
+  $app.innerHTML = `<h1>Smlouva</h1>${hlavni}
    <h2>Podepsané</h2>
-   ${S.dokumenty.filter((d) => d.stav === 'podepsano').map((d) => `<div class="sem"><span>${esc(d.dokument_sablona?.nazev)}<br><span class="mute">podepsáno ${new Date(d.podepsano_at).toLocaleString('cs-CZ')} · ${esc(d.podpis?.zpusob || '')}</span></span><span class="tag t-ok">✓</span></div>`).join('') || '<p class="mute">Zatím nic.</p>'}
-   <p class="mute">PDF ke stažení doplníme v další verzi.</p>`;
-  const m = (t, typ) => (document.getElementById('m').innerHTML = msg(t, typ));
+   ${podepsane.map((d) => { const [t, c] = stavSmlouvy(d); const lze = d.odeslano_at && !d.odstoupeno_at && new Date(d.odstoupeni_do) > new Date();
+     return `<div class="sem dok-pod" data-id="${d.id}"><span>${esc(d.dokument_sablona?.nazev)}<br><span class="mute">podepsáno ${kdyCz(d.podepsano_at)} · ${esc(d.podpis?.zpusob || '')}</span>
+       <span class="akce">${d.pdf_cesta ? '<a href="#" class="pdf">Stáhnout PDF</a>' : ''}${!d.odeslano_at && !d.odstoupeno_at ? ' <button class="btn o mini poslat">Poslat PDF na e-mail</button>' : ''}${lze ? ' <a href="#" class="odstoupit">Odstoupit od smlouvy</a>' : ''}</span><span class="m2"></span></span>
+       <span class="tag ${c}">${t}</span></div>`; }).join('') || '<p class="mute">Zatím nic.</p>'}`;
+  const m = (t, typ) => { const el = document.getElementById('m'); if (el) el.innerHTML = msg(t, typ); };
+  const n = document.getElementById('n'); if (n) n.onclick = () => ukaz('nastup');
+  document.querySelectorAll('.dok-pod').forEach((r) => {
+    const d = S.dokumenty.find((x) => x.id === r.dataset.id), m2 = (t, typ) => (r.querySelector('.m2').innerHTML = msg(t, typ));
+    const pdf = r.querySelector('.pdf');
+    if (pdf) pdf.onclick = async (e) => { e.preventDefault(); const { data, error } = await sb.storage.from('dokumenty').createSignedUrl(d.pdf_cesta, 120);
+      if (error) return m2(esc(chybaText(error)), 'bad'); window.open(data.signedUrl, '_blank'); };
+    const po = r.querySelector('.poslat');
+    if (po) po.onclick = async () => { po.disabled = true; if (await odesliSmlouvu(d, m2)) { await nacti(); vDokumenty(); } else po.disabled = false; };
+    const od = r.querySelector('.odstoupit');
+    if (od) od.onclick = async (e) => { e.preventDefault();
+      if (!confirm('Opravdu od smlouvy odstupujete? Tento krok nejde vrátit.')) return;
+      const { error } = await sb.rpc('smlouva_odstoupit', { p_dokument: d.id });
+      if (error) return m2(esc(chybaText(error)), 'bad');
+      await nacti(); vDokumenty(); };
+  });
   const pr = document.getElementById('pripravit');
   if (pr) pr.onclick = async () => {
     pr.disabled = true;
@@ -528,7 +587,7 @@ function vDokumenty() {
     if (error) { pr.disabled = false; return m(esc(chybaText(error)), 'bad'); }
     await nacti(); vDokumenty();
   };
-  if (!kPodpisu) return;
+  if (!kPodpisu || !kPodpisu.vixen_podepsano_at || bezSouhlasu) return;
   document.getElementById('precteno').onchange = (e) => (document.getElementById('kod').disabled = !e.target.checked);
   document.getElementById('kod').onclick = async (e) => {
     e.target.disabled = true; e.target.textContent = 'Posílám…';
@@ -546,9 +605,10 @@ function vDokumenty() {
     e.target.disabled = false;
     if (error) return m(esc(chybaText(error)), 'bad');
     if (!data) return ukazChyby({ k: 'Kód nesedí. Zkuste to znovu nebo si pošlete nový.' });
-    await nacti();
-    $app.innerHTML = `<h1>Podepsáno ✓</h1>${msg('Smlouva je podepsaná. Děkujeme!')}<button class="btn o" id="p">Zpět na přehled</button>`;
+    $app.innerHTML = `<h1>Podepsáno ✓</h1><div id="m"></div><button class="btn o" id="p">Zpět na přehled</button>`;
     document.getElementById('p').onclick = () => ukaz('prehled');
+    await odesliSmlouvu(kPodpisu, m);
+    await nacti();
   };
 }
 

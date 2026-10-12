@@ -47,9 +47,14 @@ stavy.forEach((stav, i) => {
   db.nastup[id] = { osoba_id: id, rodne_cislo: rcVyrob(nar, !muz), datum_narozeni: iso(nar).slice(0, 10), rodne_prijmeni: pr, misto_narozeni: m[0], obcanstvi: 'CZ', danova_rezidence: 'CZ',
     ulice: vyber(['Nádražní', 'Husova', 'Lannova', 'Pražská', 'Žižkova', 'Riegrova']), cislo_popisne: String(1 + nah(2400)), obec: m[0], psc: m[1], stat_bydliste: 'CZ',
     zdravotni_pojistovna: vyber(['111', '111', '201', '205', '207', '211']), ucet_predcisli: null, ucet_cislo: ucetVyrob(), ucet_banka: vyber(['0100', '0300', '0800', '2010', '3030', '5500']), potvrzeno_at: iso(new Date(+vytv + 5 * DEN)) };
-  const r = nah(100);
-  if (r < 80) db.dok[id] = [{ id: 'dd-' + i, stav: 'podepsano', vytvoreno: iso(new Date(+vytv + 6 * DEN)), podepsano_at: iso(new Date(+vytv + 6 * DEN + 7200000)), podpis: { zpusob: 'kód e-mailem' }, dokument_sablona: { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' } }];
-  else if (r < 90) db.dok[id] = [{ id: 'dd-' + i, stav: 'k_podpisu', vytvoreno: iso(new Date(TED - 2 * DEN)), podepsano_at: null, podpis: null, dokument_sablona: { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' } }];
+  db.nastup[id].email_smlouvy = (db.osoba.find((x) => x.id === id) || {}).email || null; db.nastup[id].email_smlouvy_souhlas_at = db.nastup[id].potvrzeno_at;
+  const r = nah(100), VIX = (t) => ({ vixen_podepsano_at: t, vixen_podpis: { jmeno: 'Ladislava Lišková', opravneni: 'zaměstnavatel (OSVČ)', zpusob: 'ukázka' } });
+  const obsah = 'DOHODA O PROVEDENÍ PRÁCE\nUKÁZKOVÝ TEXT – vzor dodá Vixen\n\nZaměstnavatel: Ladislava Lišková – Vixen\nZaměstnanec: ' + jm + ' ' + pr + '\n\n[Předmět, rozsah, odměna – DOPLNIT podle vzoru Vixen]';
+  const sabl = { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' };
+  if (r < 80) { const pod = new Date(r < 8 ? TED - nah(5) * DEN - 3600000 : +vytv + 6 * DEN + 7200000), ode = new Date(+pod + 60000);
+    db.dok[id] = [{ id: 'dd-' + i, stav: 'podepsano', obsah, vytvoreno: iso(new Date(+pod - 7200000)), ...VIX(iso(new Date(+pod - 3600000))), podepsano_at: iso(pod), podpis: { zpusob: 'kód e-mailem' },
+      odeslano_at: iso(ode), odeslano_na: db.nastup[id].email_smlouvy, odstoupeni_do: iso(new Date(+ode + 7 * DEN)), odstoupeno_at: null, pdf_cesta: null, dokument_sablona: sabl }]; }
+  else if (r < 90) db.dok[id] = [{ id: 'dd-' + i, stav: 'k_podpisu', obsah, vytvoreno: iso(new Date(TED - 2 * DEN)), ...(r < 85 ? VIX(iso(new Date(TED - DEN))) : {}), podepsano_at: null, podpis: null, dokument_sablona: sabl }];
 });
 db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro Tbdb', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
 
@@ -77,6 +82,8 @@ const odpoved = (d, status = 200, h = {}) => new Response(d === undefined || sta
 const hodnota = (q, k) => { const v = q.get(k); return v == null ? null : v.replace(/^(eq|in)\./, '').replace(/^\(|\)$/g, ''); };
 const zaznamZmeny = (id, pred) => db.hist.unshift({ tabulka: 'osoba', zaznam_id: id, akce: 'UPDATE', kdy: new Date().toISOString(), pred });
 const osobaPlna = (o) => ({ ...o, osoba_foto: (db.foto[o.id] || []).map((cesta, i) => ({ cesta, poradi: i + 1 })), osoba_okres: db.okres[o.id].map((okres_kod) => ({ okres_kod })), osoba_profil: db.profil[o.id] || null, osoba_poznamka: db.pozn[o.id] ? { text: db.pozn[o.id] } : null });
+const dppStav = (d) => !d ? null : d.odstoupeno_at ? 'odstoupeno' : d.stav === 'k_podpisu' ? (d.vixen_podepsano_at ? 'ceka_hosteska' : 'ceka_vixen')
+  : !d.odeslano_at ? 'neodeslano' : new Date(d.odstoupeni_do) > new Date() ? 'lhuta' : 'uzavreno';
 const puvodniFetch = window.fetch.bind(window);
 window.fetch = async (vstup, init = {}) => {
   const url = new URL(typeof vstup === 'string' ? vstup : vstup.url, location.href);
@@ -89,8 +96,14 @@ window.fetch = async (vstup, init = {}) => {
   if (p.startsWith('/auth/v1/')) return odpoved({ access_token: 'demo.demo.demo', token_type: 'bearer', expires_in: 86400, expires_at: exp, refresh_token: 'demo', user: USER });
   if (p.endsWith('/rpc/ma_pravo')) return odpoved(['vedeni', 'nabor', 'smlouvy', 'ucetni'].includes(body.p));
   if (p.endsWith('/rpc/kancelar_lide')) return odpoved(db.osoba.map((o) => { const n = db.nastup[o.id], d = (db.dok[o.id] || []).find((x) => x.stav !== 'zruseno');
-    return { osoba_id: o.id, ma_profil: !!db.profil[o.id], udaje_hotove: !!n?.potvrzeno_at, vek: n ? Math.floor((TED - new Date(n.datum_narozeni)) / (365.25 * DEN)) : null, dpp_stav: d?.stav || null, dpp_podepsano_at: d?.podepsano_at || null }; }));
-  if (p.endsWith('/rpc/dokument_priprav')) { const id = body.p_osoba; db.dok[id] = [{ id: 'dd-n' + Date.now(), stav: 'k_podpisu', vytvoreno: new Date().toISOString(), podepsano_at: null, podpis: null, dokument_sablona: { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' } }, ...(db.dok[id] || [])]; return odpoved('nove'); }
+    return { osoba_id: o.id, ma_profil: !!db.profil[o.id], udaje_hotove: !!n?.potvrzeno_at, vek: n ? Math.floor((TED - new Date(n.datum_narozeni)) / (365.25 * DEN)) : null, dpp_stav: dppStav(d), dpp_podepsano_at: d?.podepsano_at || null }; }));
+  if (p.endsWith('/rpc/podpis_vixen')) { const d = Object.values(db.dok).flat().find((x) => x.id === body.p_dokument); if (!d || d.vixen_podepsano_at) return odpoved({ message: 'Dokument není k podpisu.' }, 400);
+    Object.assign(d, { vixen_podepsano_at: new Date().toISOString(), vixen_podpis: { jmeno: 'Ladislava Lišková (ukázka)', opravneni: 'zaměstnavatel (OSVČ)', zpusob: 'ukázka' } }); return odpoved(d.vixen_podepsano_at); }
+  if (p.endsWith('/functions/v1/smlouva-odeslat')) { const d = Object.values(db.dok).flat().find((x) => x.id === body.dokument_id);
+    if (!d || d.stav !== 'podepsano') return odpoved({ chyba: 'Smlouva ještě není podepsaná oběma stranami.' });
+    Object.assign(d, { odeslano_at: new Date().toISOString(), odeslano_na: 'UKÁZKA – neodesláno', odstoupeni_do: new Date(Date.now() + 7 * DEN).toISOString() }); return odpoved({ odeslano: true, na: 'ukázka' }); }
+  if (p.endsWith('/rest/v1/podpisujici')) return odpoved({ jmeno: 'Ladislava Lišková (ukázka)', opravneni: 'zaměstnavatel (OSVČ)', do_: null });
+  if (p.endsWith('/rpc/dokument_priprav')) { const id = body.p_osoba; db.dok[id] = [{ id: 'dd-n' + Date.now(), stav: 'k_podpisu', obsah: 'DOHODA O PROVEDENÍ PRÁCE\nUKÁZKOVÝ TEXT – vzor dodá Vixen', vytvoreno: new Date().toISOString(), podepsano_at: null, podpis: null, dokument_sablona: { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' } }, ...(db.dok[id] || [])]; return odpoved('nove'); }
   for (const t of ['kraj', 'okres', 'zdravotni_pojistovna']) if (p.endsWith('/rest/v1/' + t)) return odpoved(CIS[t]);
   if (p.endsWith('/rest/v1/osoba')) {
     const stav = hodnota(q, 'stav'), ids = hodnota(q, 'id');
