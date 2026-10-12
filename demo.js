@@ -79,7 +79,7 @@ const zaznamZmeny = (id, pred) => db.hist.unshift({ tabulka: 'osoba', zaznam_id:
 const osobaPlna = (o) => ({ ...o, osoba_foto: (db.foto[o.id] || []).map((cesta, i) => ({ cesta, poradi: i + 1 })), osoba_okres: db.okres[o.id].map((okres_kod) => ({ okres_kod })), osoba_profil: db.profil[o.id] || null, osoba_poznamka: db.pozn[o.id] ? { text: db.pozn[o.id] } : null });
 const puvodniFetch = window.fetch.bind(window);
 window.fetch = async (vstup, init = {}) => {
-  const url = new URL(typeof vstup === 'string' ? vstup : vstup.url);
+  const url = new URL(typeof vstup === 'string' ? vstup : vstup.url, location.href);
   if (!url.href.startsWith(C.url)) return puvodniFetch(vstup, init);
   const p = url.pathname, q = url.searchParams, m = (init.method || 'GET').toUpperCase();
   let body = null; try { body = init.body ? JSON.parse(init.body) : null; } catch {}

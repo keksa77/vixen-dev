@@ -449,8 +449,8 @@ function vykresliTabulku() {
      <td class="nw">${p.vyska_cm ? p.vyska_cm + ' cm' : '–'}<small>${esc(p.konfekce || '')}${p.bota_eu ? ' · ' + p.bota_eu : ''}</small></td>
      <td>${esc((p.jazyky || []).join(', ')) || '–'}<small>${p.ridicak ? 'řidičák' : ''}${p.vlastni_auto ? ' · auto' : ''}</small></td>
      <td>${o.vek ?? '–'}</td>
-     <td class="tecka">${tecka(o.ma_profil ? 'ok' : 'no', 'Profil')}</td><td class="tecka">${tecka(o.udaje ? 'ok' : 'no', 'Údaje pro smlouvu')}</td>
-     <td class="tecka">${tecka(o.dpp === 'podepsano' ? 'ok' : o.dpp === 'k_podpisu' ? 'wa' : 'no', o.dpp === 'k_podpisu' ? 'DPP čeká na podpis' : 'DPP')}</td><td class="tecka">${tecka('', 'ČSSZ – připravujeme')}</td>
+     <td class="semf">${tecka(o.ma_profil ? 'ok' : 'no', 'Profil')}</td><td class="semf">${tecka(o.udaje ? 'ok' : 'no', 'Údaje pro smlouvu')}</td>
+     <td class="semf">${tecka(o.dpp === 'podepsano' ? 'ok' : o.dpp === 'k_podpisu' ? 'wa' : 'no', o.dpp === 'k_podpisu' ? 'DPP čeká na podpis' : 'DPP')}</td><td class="semf">${tecka('', 'ČSSZ – připravujeme')}</td>
      <td>${datum(o.vytvoreno)}</td></tr>`;
   };
   const telo = document.getElementById('telo');

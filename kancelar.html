@@ -109,8 +109,9 @@ details.vf summary::-webkit-details-marker{display:none}
 .foto.velka{width:96px;height:124px;font-size:22px}
 .foto-velka{position:fixed;z-index:30;width:260px;height:340px;border-radius:14px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.3);background:#fff;pointer-events:none;border:4px solid #fff}
 .foto-velka img{width:100%;height:100%;object-fit:cover}
-.tecka{font-size:17px;line-height:1;color:#d8d1c3}.tecka.ok{color:var(--ok)}.tecka.wa{color:#e0a32a}.tecka.no{color:var(--bad)}
-.lide-tab td.tecka{text-align:center}
+.tecka{display:inline-block;width:20px;height:20px;border-radius:50%;background:#d8d1c3;font-size:0;vertical-align:middle}.tecka.ok{background:var(--ok)}.tecka.wa{background:#e0a32a}.tecka.no{background:var(--bad)}
+.pozn .tecka{width:13px;height:13px;vertical-align:-2px}
+.lide-tab td.semf{text-align:center;vertical-align:middle}
 .det-fotky{display:flex;gap:8px;align-items:center;margin:12px 0;overflow-x:auto}.det-fotky img{width:120px;height:156px;object-fit:cover;border-radius:10px;background:#eee8dc}
 @media(max-width:900px){body.ma-side main{margin-left:0;padding-left:16px;padding-right:16px}
  .kside{position:static;width:auto;flex-direction:row;overflow-x:auto;padding:8px;margin:-16px -16px 14px}.kside button{white-space:nowrap;flex:0 0 auto}.kside button small{display:none}}
