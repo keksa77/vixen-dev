@@ -8,7 +8,7 @@ body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system
 .top b{color:var(--gold);letter-spacing:.14em}
 .top button{background:none;border:1px solid #555;color:#ddd;border-radius:8px;padding:4px 10px;font:inherit;font-size:13px;cursor:pointer}
 .env{background:var(--warn-s);color:var(--warn);font-size:12px;text-align:center;padding:3px}
-main{max-width:560px;margin:0 auto;padding:16px 16px 90px}
+main{max-width:560px;margin:0 auto;padding:16px 16px 40px}
 h1{font-size:22px;margin:8px 0 4px}
 h2{font-size:18px;margin:18px 0 6px}
 .mute{color:var(--mute);font-size:14px}
@@ -39,9 +39,38 @@ h2{font-size:18px;margin:18px 0 6px}
 .sum div:nth-child(odd){color:var(--mute)}
 .doc{white-space:pre-wrap;font:13px/1.55 Georgia,serif;background:#fffdf8;border:1px solid var(--line);border-radius:10px;padding:14px;max-height:340px;overflow:auto}
 .code{font-size:28px;letter-spacing:10px;text-align:center;font-weight:700}
-.tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 0 calc(6px + env(safe-area-inset-bottom));z-index:5}
-.tabs button{background:none;border:0;font:inherit;font-size:12px;color:var(--mute);padding:6px 8px;cursor:pointer}
-.tabs button.on{color:var(--gold-d);font-weight:700}
+.hlava{position:sticky;top:0;z-index:6}.hlava .top{position:static}
+/* navigace krokem nahoře (hosteska) */
+.kroky{display:flex;background:#fff;border-bottom:1px solid var(--line);max-width:100%;overflow-x:auto}
+.kroky button{flex:1 1 0;min-width:72px;background:none;border:0;border-bottom:3px solid transparent;font:inherit;font-size:13px;color:var(--mute);padding:8px 4px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.kroky button i{font-style:normal;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:#ece6da;color:var(--mute)}
+.kroky button.on{color:var(--ink);font-weight:700;border-bottom-color:var(--gold)}
+.kroky button.hot i{background:var(--ok);color:#fff}
+.kroky button.dalsi i{background:var(--gold);color:#fff;box-shadow:0 0 0 3px var(--gold-s)}
+.kroky button.zamek{opacity:.55}
+/* tok kroků na přehledu */
+.ted{border-radius:14px;padding:14px 16px;margin:12px 0 18px;background:var(--gold-s);border:2px solid var(--gold)}
+.ted.kancelar{background:var(--warn-s);border-color:#e6c98f}
+.ted.konec{background:var(--ok-s);border-color:#9fd0b2}
+.ted b{display:block;font-size:17px;margin-bottom:2px}
+.ted .btn{margin-top:10px}
+.prubeh{height:8px;border-radius:4px;background:#e6dfd1;overflow:hidden;margin:6px 0 2px}.prubeh>div{height:100%;background:var(--ok)}
+.cesta{margin:8px 0 0;padding:0;list-style:none}
+.cesta li{position:relative;display:flex;gap:12px;padding:0 0 22px}
+.cesta li:not(:last-child)::before{content:"";position:absolute;left:15px;top:32px;bottom:2px;width:2px;background:var(--line)}
+.cesta li:not(:last-child)::after{content:"";position:absolute;left:10px;bottom:0;border:6px solid transparent;border-top:8px solid var(--line)}
+.cesta li.hotovo:not(:last-child)::before{background:var(--ok)}.cesta li.hotovo:not(:last-child)::after{border-top-color:var(--ok)}
+.cesta .c{flex:0 0 32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:#ece6da;color:var(--mute);position:relative;z-index:1}
+.cesta li.hotovo .c{background:var(--ok);color:#fff}
+.cesta li.nyni .c{background:var(--gold);color:#fff;box-shadow:0 0 0 4px var(--gold-s)}
+.cesta .t{flex:1;min-width:0}
+.cesta .t b{display:block}
+.cesta .t small{display:block;color:var(--mute);font-size:13px}
+.cesta li.nyni .t b{color:var(--gold-d)}
+.cesta li.budouci .t{opacity:.7}
+.kdo{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:middle}
+.kdo.vy{background:var(--gold);color:#fff}.kdo.kanc{background:#e9e3d6;color:var(--mute)}
+.cesta li[data-v]{cursor:pointer}
 .hidden{display:none!important}
 a{color:var(--gold-d)}
 /* kde může pracovat */

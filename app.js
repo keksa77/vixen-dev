@@ -244,24 +244,53 @@ async function nacti() {
 function ukaz(v) {
   S.view = v;
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  navStav();
   ({ prehled: vPrehled, profil: vProfil, nastup: vNastup, dokumenty: vDokumenty })[v]();
   window.scrollTo(0, 0);
 }
 const schvalena = () => S.osoba && S.osoba.stav !== 'uchazec' && S.osoba.stav !== 'odmitnuta';
 
-// ---------- přehled (semafor) ----------
-function vPrehled() {
+// ---------- přehled: tok kroků k první akci ----------
+function kroky() {
   const dpp = S.dokumenty.find((x) => x.dokument_sablona?.druh === 'dpp');
-  const r = (t, tag, cls, v) => `<div class="sem" data-v="${v || ''}"><span>${t}</span><span class="tag ${cls}">${tag}</span></div>`;
-  $app.innerHTML = `<h1>Dobrý den, ${esc(S.osoba.jmeno)}</h1><p class="mute">Co máte hotové a co ještě chybí:</p>
-   ${r('Registrace', 'hotovo', 't-ok')}
-   ${S.osoba.stav === 'uchazec' ? r('Schválení kanceláří', 'čekáme', 't-w') : S.osoba.stav === 'odmitnuta' ? r('Schválení', 'nepřijato', 't-b') : r('Schválení kanceláří', 'hotovo', 't-ok')}
-   ${r('Profil', S.profil ? 'hotovo' : 'doplnit', S.profil ? 't-ok' : 't-w', 'profil')}
-   ${r('Údaje pro smlouvu', S.nastup?.potvrzeno_at ? 'hotovo' : 'doplnit', S.nastup?.potvrzeno_at ? 't-ok' : 't-w', 'nastup')}
-   ${r('Smlouva DPP', dpp ? (dpp.stav === 'podepsano' ? 'podepsáno' : 'k podpisu') : 'zatím ne', dpp ? (dpp.stav === 'podepsano' ? 't-ok' : 't-b') : 't-g', 'dokumenty')}
-   ${r('Přihlášení na ČSSZ', 'řeší kancelář', 't-g')}
-   ${S.osoba.stav === 'uchazec' ? msg('Vaši registraci ještě prochází kancelář. Profil a údaje pro smlouvu půjdou doplnit po schválení.', 'warn') : ''}`;
-  $app.querySelectorAll('.sem[data-v]').forEach((el) => el.dataset.v && (el.onclick = () => ukaz(el.dataset.v)));
+  const ok = schvalena();
+  return [
+    { t: 'Registrace', kdo: 'vy', hotovo: true, popis: 'kontakt, kde můžete pracovat' },
+    { t: 'Schválení kanceláří', kdo: 'kanc', hotovo: ok, popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata' : 'kancelář projde vaši registraci' },
+    { t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil, popis: 'výška, konfekce, jazyky, kdy můžete', tlac: 'Doplnit profil' },
+    { t: 'Údaje pro smlouvu', v: 'nastup', kdo: 'vy', hotovo: !!S.nastup?.potvrzeno_at, popis: 'rodné číslo, adresa, pojišťovna, účet', tlac: 'Vyplnit údaje' },
+    { t: 'Podpis smlouvy (DPP)', v: 'dokumenty', kdo: 'vy', hotovo: dpp?.stav === 'podepsano', popis: dpp && dpp.stav !== 'podepsano' ? 'smlouva čeká na váš podpis' : 'přečíst a podepsat kódem', tlac: dpp ? 'Podepsat smlouvu' : 'Připravit smlouvu' },
+    { t: 'Přihlášení na ČSSZ', kdo: 'kanc', hotovo: false, popis: 'kancelář vás přihlásí před první akcí' },
+  ];
+}
+function navStav() {
+  if (!S.osoba) return;
+  const k = kroky(), ok = schvalena(), dalsi = k.find((x) => !x.hotovo);
+  const mapa = { profil: k[2], nastup: k[3], dokumenty: k[4] };
+  document.querySelectorAll('#tabs button').forEach((b) => {
+    const x = mapa[b.dataset.v]; if (!x) return;
+    b.classList.toggle('hot', x.hotovo); b.classList.toggle('dalsi', ok && x === dalsi); b.classList.toggle('zamek', !ok);
+    b.querySelector('i').textContent = x.hotovo ? '✓' : !ok ? '🔒' : { profil: '3', nastup: '4', dokumenty: '5' }[b.dataset.v];
+  });
+}
+function vPrehled() {
+  const k = kroky(), dalsi = k.find((x) => !x.hotovo), hotovych = k.filter((x) => x.hotovo).length;
+  const odmitnuta = S.osoba.stav === 'odmitnuta';
+  let ted;
+  if (odmitnuta) ted = `<div class="ted kancelar"><b>Registrace nebyla přijata</b>Pokud jde o omyl, ozvěte se prosím kanceláři Vixen.</div>`;
+  else if (dalsi.kdo === 'vy') ted = `<div class="ted"><b>Teď je to na vás: ${esc(dalsi.t)}</b>${esc(dalsi.popis)}<button class="btn" id="dal">${esc(dalsi.tlac)} →</button></div>`;
+  else if (dalsi === k[1]) ted = `<div class="ted kancelar"><b>Teď čekáte na kancelář</b>Vaši registraci prochází kancelář. Po schválení vám dáme vědět a budete moct pokračovat profilem.</div>`;
+  else ted = `<div class="ted konec"><b>Z vaší strany je hotovo ✓</b>Kancelář vás přihlásí na ČSSZ před první akcí. Údaje můžete kdykoli upravit.</div>`;
+  const stav = (x) => (x.hotovo ? 'hotovo' : x === dalsi ? 'nyni' : 'budouci');
+  $app.innerHTML = `<h1>Dobrý den, ${esc(S.osoba.jmeno)}</h1>
+   <p class="mute">Vaše cesta k první akci – hotovo ${hotovych} z ${k.length}</p>
+   <div class="prubeh"><div style="width:${Math.round((hotovych / k.length) * 100)}%"></div></div>
+   ${ted}
+   <ol class="cesta">${k.map((x, i) => `<li class="${stav(x)}"${x.v && schvalena() ? ` data-v="${x.v}"` : ''}>
+     <span class="c">${x.hotovo ? '✓' : i + 1}</span>
+     <span class="t"><b>${esc(x.t)}<span class="kdo ${x.kdo === 'vy' ? 'vy' : 'kanc'}">${x.kdo === 'vy' ? 'vy' : 'kancelář'}</span></b><small>${esc(x.popis)}</small></span></li>`).join('')}</ol>`;
+  const tl = document.getElementById('dal'); if (tl) tl.onclick = () => ukaz(dalsi.v);
+  $app.querySelectorAll('.cesta li[data-v]').forEach((el) => (el.onclick = () => ukaz(el.dataset.v)));
 }
 
 // ---------- krok 3: profil ----------
