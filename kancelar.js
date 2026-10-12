@@ -1,7 +1,7 @@
 // Vixen – aplikace kanceláře. Zatím: úvodní stránka s dotazy (tikety) majitelek pro Tbdb.
 (function () {
 const C = window.VIXEN_CONFIG, K = window.K;
-const sb = window.supabase.createClient(C.url, C.key);
+const sb = window.supabase.createClient(C.url, C.key, window.VIXEN_DEMO ? { auth: window.VIXEN_DEMO_AUTH, global: { fetch: (...a) => window.fetch(...a) } } : undefined);
 const $app = document.getElementById('app');
 const DEV = new URLSearchParams(location.search).has('dev');
 const S = { user: null, jmeno: '', tbdb: false, nabor: false, smlouvy: false, vedeni: false, tikety: [], cis: null, lide: [], vyber: new Set() };
@@ -9,7 +9,8 @@ const TYP = { dotaz: 'Dotaz', chyba: 'Něco nefunguje', prani: 'Přání / nápa
 const STAV = { novy: ['nový', 't-w'], resime: ['řešíme', 't-g'], ceka_na_vas: ['čeká na vás', 't-b'], hotovo: ['hotovo', 't-ok'] };
 const MAX_MB = 10;
 
-if (C.prostredi) document.getElementById('env').textContent = C.prostredi + ' – jen zkušební data';
+if (window.VIXEN_DEMO) { /* text pásku nastaví demo.js */ }
+else if (C.prostredi) document.getElementById('env').textContent = C.prostredi + ' – jen zkušební data';
 else document.getElementById('env').classList.add('hidden');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const msg = (t, typ = 'ok') => `<div class="msg ${typ}">${t}</div>`;
@@ -27,7 +28,7 @@ function chybaFormu(form, text) {
 }
 const kdy = (d) => new Date(d).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 const chyba = (e) => (e && (e.message || e.error_description)) || String(e);
-document.getElementById('odhlasit').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+document.getElementById('odhlasit').onclick = async () => { if (window.VIXEN_DEMO) return (location.href = location.pathname); await sb.auth.signOut(); location.reload(); };
 
 async function start() {
   const { data } = await sb.auth.getSession();
