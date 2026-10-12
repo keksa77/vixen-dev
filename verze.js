@@ -1,5 +1,5 @@
 // Verze buildu – při každém nasazení zvýšit BUILD a upravit DATUM.
-window.VIXEN_VERZE = { verze: '0.7', build: 13, datum: '12. 10. 2026 18:17' };
+window.VIXEN_VERZE = { verze: '0.7', build: 14, datum: '12. 10. 2026 18:37' };
 (function () {
   var v = window.VIXEN_VERZE;
   var text = 'v' + v.verze + ' · build ' + v.build + ' · ' + v.datum;

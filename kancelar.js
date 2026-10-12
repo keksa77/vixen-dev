@@ -7,6 +7,12 @@ const DEV = new URLSearchParams(location.search).has('dev');
 const S = { user: null, jmeno: '', tbdb: false, nabor: false, smlouvy: false, vedeni: false, tikety: [], cis: null, lide: [], vyber: new Set() };
 const TYP = { dotaz: 'Dotaz', chyba: 'Něco nefunguje', prani: 'Přání / nápad' };
 const STAV = { novy: ['nový', 't-w'], resime: ['řešíme', 't-g'], ceka_na_vas: ['čeká na vás', 't-b'], hotovo: ['hotovo', 't-ok'] };
+// stav z pohledu přihlášeného: Tbdb vidí „čeká na Vixen“ místo „čeká na vás“
+const stavT = (s) => (S.tbdb && s === 'ceka_na_vas' ? ['čeká na Vixen', 't-b'] : STAV[s]);
+// na tahu = kdo má teď odpovědět: Tbdb u nových a řešených, Vixen u „čeká na vás“
+const naTahu = (t) => (S.tbdb ? t.stav === 'novy' || t.stav === 'resime' : t.stav === 'ceka_na_vas');
+// upozornění e-mailem pro Tbdb (nový dotaz / odpověď Vixen); chyba upozornění nesmí zastavit práci
+const upozorni = (tiket_id, udalost) => { if (!S.tbdb) sb.functions.invoke('tiket-upozorneni', { body: { tiket_id, udalost } }).catch(() => {}); };
 const MAX_MB = 10;
 
 if (window.VIXEN_DEMO) { /* text pásku nastaví demo.js */ }
@@ -104,15 +110,14 @@ function zapniDiktovani() {
   });
 }
 
-// ---------- úvodní stránka: nový dotaz + seznam ----------
+// ---------- dotazy: Vixen píše, Tbdb odpovídá – stejná obrazovka, jen jiný pohled ----------
 async function vUvod(hlaska) {
   await nactiTikety();
-  const otevrene = S.tikety.filter((t) => t.stav !== 'hotovo'), hotove = S.tikety.filter((t) => t.stav === 'hotovo');
-  const radek = (t) => `<div class="tik" data-id="${t.id}"><span><b>#${t.cislo} ${esc(t.predmet)}</b>${t.spech ? ' ⚡' : ''}<small>${TYP[t.typ]} · ${esc(t.autor_jmeno)} · ${kdy(t.zmeneno)}</small></span><span class="tag ${STAV[t.stav][1]}">${STAV[t.stav][0]}</span></div>`;
-  $app.innerHTML = `${await menu('dotazy')}<h1>Dobrý den${S.tbdb ? '' : ', ' + esc(K.vokativ(S.jmeno))}</h1>
-   ${hlaska || ''}
-   <div class="card"><h2 style="margin-top:0">Napište nám (Tbdb)</h2>
-    <p class="pozn">Dotaz, problém nebo nápad k aplikaci. Odpovíme tady – uvidíte to v seznamu níže.</p>
+  const radek = (t) => `<div class="tik${naTahu(t) ? ' natahu' : ''}" data-id="${t.id}"><span><b>#${t.cislo} ${esc(t.predmet)}</b>${t.spech ? ' ⚡' : ''}<small>${TYP[t.typ]} · ${esc(t.autor_jmeno)} · ${kdy(t.zmeneno)}</small></span><span class="tag ${stavT(t.stav)[1]}">${stavT(t.stav)[0]}</span></div>`;
+  const razeni = (a, b) => (b.spech - a.spech) || (a.zmeneno < b.zmeneno ? -1 : 1);   // spěchá nahoře, pak nejstarší
+  const tah = S.tikety.filter(naTahu).sort(razeni), ostatni = S.tikety.filter((t) => t.stav !== 'hotovo' && !naTahu(t)), hotove = S.tikety.filter((t) => t.stav === 'hotovo');
+  const formular = `<div class="card"><h2 style="margin-top:0">Napište nám (Tbdb)</h2>
+    <p class="pozn">Dotaz, problém nebo nápad k aplikaci. Tbdb dostane upozornění e-mailem a odpoví tady – uvidíte to v seznamu níže.</p>
     <form id="f" novalidate>
      <div class="fld" data-f="typ"><label>Co potřebujete</label><div class="chips typy">
       ${Object.entries(TYP).map(([k, v], i) => `<label><input type="radio" name="typ" value="${k}"${i ? '' : ' checked'}> ${v}</label>`).join('')}</div><div class="err"></div></div>
@@ -121,14 +126,16 @@ async function vUvod(hlaska) {
      <div class="fld" data-f="soubory"><label for="soubory">Přílohy (nepovinné – snímek obrazovky, dokument; max. ${MAX_MB} MB)</label><input id="soubory" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"><div class="err"></div></div>
      <label class="chk"><input type="checkbox" id="spech"> Spěchá</label>
      <button class="btn" type="submit">Odeslat dotaz</button>
-    </form></div>
-   <h2>Otevřené dotazy</h2>${otevrene.map(radek).join('') || '<p class="mute">Žádné.</p>'}
-   ${hotove.length ? `<h2>Vyřešené</h2>${hotove.map(radek).join('')}` : ''}
-   <p class="pozn" style="margin-top:24px">Další části kanceláře (lidé, akce, dokumenty) připravujeme.</p>`;
+    </form></div>`;
+  $app.innerHTML = `${await menu('dotazy')}<h1>${S.tbdb ? 'Dotazy od Vixen' : 'Dobrý den, ' + esc(K.vokativ(S.jmeno))}</h1>
+   ${hlaska || ''}
+   ${S.tbdb ? '<p class="pozn">Stejný seznam vidí Vixen. Odpovídáte v detailu dotazu, stav mění jen Tbdb. Nahoře je, co čeká na vás – spěchající první.</p>' : formular}
+   <h2>${S.tbdb ? 'Čeká na Tbdb' : 'Čeká na vaši odpověď'} <span class="mute">(${tah.length})</span></h2>${tah.map(radek).join('') || '<p class="mute">Nic – vše vyřízeno.</p>'}
+   <h2>${S.tbdb ? 'Čeká na Vixen' : 'Otevřené dotazy – řeší Tbdb'} <span class="mute">(${ostatni.length})</span></h2>${ostatni.map(radek).join('') || '<p class="mute">Žádné.</p>'}
+   ${hotove.length ? `<h2>Vyřešené <span class="mute">(${hotove.length})</span></h2>${hotove.map(radek).join('')}` : ''}`;
   zapniMenu();
   $app.querySelectorAll('.tik').forEach((el) => (el.onclick = () => vDetail(el.dataset.id)));
-  document.getElementById('f').onsubmit = odeslat;
-  zapniDiktovani();
+  const f = document.getElementById('f'); if (f) { f.onsubmit = odeslat; zapniDiktovani(); }
 }
 
 function chybyFormulare(predmet, text, soubory) {
@@ -164,6 +171,7 @@ async function odeslat(e) {
       typ: document.querySelector('input[name=typ]:checked').value }).select('id,cislo').single();
     if (error) throw error;
     if (soubory.length) await nahrajPrilohy(data.id, soubory);
+    upozorni(data.id, 'novy');
     vUvod(msg(`Dotaz #${data.cislo} jsme přijali ✓ Odpovíme co nejdřív.`));
   } catch (err) {
     b.disabled = false; b.textContent = 'Odeslat dotaz';
@@ -175,9 +183,10 @@ async function odeslat(e) {
 // ---------- menu kanceláře ----------
 async function menu(aktivni) {
   if (!S.nabor) return '';
-  const { count } = await sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec');
+  const [{ count }, { count: dotazy }] = await Promise.all([sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec'),
+    sb.from('tiket').select('id', { count: 'exact', head: true }).in('stav', S.tbdb ? ['novy', 'resime'] : ['ceka_na_vas'])]);
   document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', aktivni === 'lide' || aktivni === 'nastenka');
-  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Přihlášky', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', 'Dotazy pro Tbdb']];
+  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Přihlášky', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro Tbdb', dotazy]];
   return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
@@ -644,18 +653,18 @@ async function vDetail(id) {
     sb.from('tiket_zprava').select('*').eq('tiket_id', id).order('vytvoreno'),
     sb.from('tiket_priloha').select('*').eq('tiket_id', id).order('vytvoreno'),
   ]);
-  $app.innerHTML = `<p><a href="#" id="zpet">← Zpět</a></p>
+  $app.innerHTML = `${await menu('dotazy')}<p><a href="#" id="zpet">← Zpět na dotazy</a></p>
    <h1>#${t.cislo} ${esc(t.predmet)}</h1>
-   <p><span class="tag ${STAV[t.stav][1]}">${STAV[t.stav][0]}</span> <span class="mute">${TYP[t.typ]}${t.spech ? ' · spěchá' : ''}</span></p>
+   <p><span class="tag ${stavT(t.stav)[1]}">${stavT(t.stav)[0]}</span> <span class="mute">${TYP[t.typ]}${t.spech ? ' · spěchá' : ''}</span></p>
    <div class="zpr"><small>${esc(t.autor_jmeno)} · ${kdy(t.vytvoreno)}</small><div style="white-space:pre-wrap">${esc(t.text)}</div></div>
    ${(pril || []).map((p) => `<p>📎 <a href="#" data-cesta="${esc(p.cesta)}">${esc(p.nazev)}</a></p>`).join('')}
    ${(zpr || []).map((z) => `<div class="zpr${z.autor_jmeno.includes('(Tbdb)') ? ' tbdb' : ''}"><small>${esc(z.autor_jmeno)} · ${kdy(z.vytvoreno)}</small><div style="white-space:pre-wrap">${esc(z.text)}</div></div>`).join('')}
    <form id="f" class="card" novalidate>
     <div class="fld" data-f="text"><label for="text">Odpověď</label><textarea id="text" rows="3" placeholder="Napište nebo nadiktujte"></textarea>${mikrofon('text')}<div class="err"></div></div>
-    ${S.tbdb ? `<div class="fld"><label for="stav">Stav (jen Tbdb)</label><select id="stav">${Object.entries(STAV).map(([k, v]) => `<option value="${k}"${k === t.stav ? ' selected' : ''}>${v[0]}</option>`).join('')}</select><div class="err"></div></div>` : ''}
+    ${S.tbdb ? `<div class="fld"><label for="stav">Stav (jen Tbdb)</label><select id="stav">${Object.keys(STAV).map((k) => `<option value="${k}"${k === t.stav ? ' selected' : ''}>${stavT(k)[0]}</option>`).join('')}</select><div class="err"></div></div>` : ''}
     <button class="btn" type="submit">${S.tbdb ? 'Uložit' : 'Odeslat'}</button></form>`;
   document.getElementById('zpet').onclick = (e) => { e.preventDefault(); vUvod(); };
-  zapniDiktovani();
+  zapniMenu(); zapniDiktovani();
   $app.querySelectorAll('a[data-cesta]').forEach((a) => (a.onclick = async (e) => {
     e.preventDefault();
     const { data, error } = await sb.storage.from('tikety').createSignedUrl(a.dataset.cesta, 60);
@@ -666,7 +675,7 @@ async function vDetail(id) {
     const text = document.getElementById('text').value.trim();
     const novyStav = S.tbdb ? document.getElementById('stav').value : t.stav;
     if (!text && novyStav === t.stav) { const f = document.querySelector('[data-f=text]'); f.classList.add('chyba'); f.querySelector('.err').textContent = 'Napište odpověď.'; return; }
-    if (text) { const { error } = await sb.from('tiket_zprava').insert({ tiket_id: id, autor_jmeno: S.jmeno, text }); if (error) return chybaFormu(e.target, chyba(error)); }
+    if (text) { const { error } = await sb.from('tiket_zprava').insert({ tiket_id: id, autor_jmeno: S.jmeno, text }); if (error) return chybaFormu(e.target, chyba(error)); upozorni(id, 'odpoved'); }
     if (S.tbdb && novyStav !== t.stav) { const { error } = await sb.from('tiket').update({ stav: novyStav }).eq('id', id); if (error) return chybaFormu(e.target, chyba(error)); }
     await nactiTikety(); vDetail(id);
   };
