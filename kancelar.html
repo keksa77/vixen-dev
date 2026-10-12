@@ -20,6 +20,16 @@ main{max-width:760px}
 .mic{border:1px solid var(--gold);background:#fff;color:var(--gold-d);border-radius:20px;padding:7px 14px;font:inherit;font-size:14px;cursor:pointer}
 .mic.nahrava{background:var(--bad);border-color:var(--bad);color:#fff;animation:puls 1.2s infinite}
 @keyframes puls{50%{opacity:.7}}
+.knav{display:flex;gap:6px;margin:0 0 14px;border-bottom:1px solid var(--line)}
+.knav button{border:0;background:none;font:inherit;font-weight:600;padding:10px 12px;color:var(--mute);border-bottom:3px solid transparent;cursor:pointer}
+.knav button.on{color:var(--ink);border-bottom-color:var(--gold)}
+.pocet{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--bad);color:#fff;font-size:12px;text-align:center}
+.prihl-hl{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:17px}
+.prihl dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:10px 0;font-size:14.5px}
+.prihl dt{color:var(--mute)}.prihl dd{margin:0}
+.akce{display:flex;gap:8px;flex-wrap:wrap}.akce .btn{width:auto;flex:1 1 140px}
+.no{color:var(--bad);font-weight:600}
+.filtr{margin-bottom:6px}
 </style>
 </head>
 <body>
