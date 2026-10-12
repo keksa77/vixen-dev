@@ -1,4 +1,4 @@
-// Vixen – aplikace kanceláře. Zatím: úvodní stránka s dotazy (tikety) majitelek pro Tbdb.
+// Vixen – aplikace kanceláře. Zatím: úvodní stránka s dotazy (tikety) majitelek pro TBDB.
 (function () {
 const C = window.VIXEN_CONFIG, K = window.K;
 const sb = window.supabase.createClient(C.url, C.key, window.VIXEN_DEMO ? { auth: window.VIXEN_DEMO_AUTH, global: { fetch: (...a) => window.fetch(...a) } } : undefined);
@@ -7,11 +7,11 @@ const DEV = new URLSearchParams(location.search).has('dev');
 const S = { user: null, jmeno: '', tbdb: false, nabor: false, smlouvy: false, vedeni: false, tikety: [], cis: null, lide: [], vyber: new Set() };
 const TYP = { dotaz: 'Dotaz', chyba: 'Něco nefunguje', prani: 'Přání / nápad' };
 const STAV = { novy: ['nový', 't-w'], resime: ['řešíme', 't-g'], ceka_na_vas: ['čeká na vás', 't-b'], hotovo: ['hotovo', 't-ok'] };
-// stav z pohledu přihlášeného: Tbdb vidí „čeká na Vixen“ místo „čeká na vás“
+// stav z pohledu přihlášeného: TBDB vidí „čeká na Vixen“ místo „čeká na vás“
 const stavT = (s) => (S.tbdb && s === 'ceka_na_vas' ? ['čeká na Vixen', 't-b'] : STAV[s]);
-// na tahu = kdo má teď odpovědět: Tbdb u nových a řešených, Vixen u „čeká na vás“
+// na tahu = kdo má teď odpovědět: TBDB u nových a řešených, Vixen u „čeká na vás“
 const naTahu = (t) => (S.tbdb ? t.stav === 'novy' || t.stav === 'resime' : t.stav === 'ceka_na_vas');
-// upozornění e-mailem pro Tbdb (nový dotaz / odpověď Vixen); chyba upozornění nesmí zastavit práci
+// upozornění e-mailem pro TBDB (nový dotaz / odpověď Vixen); chyba upozornění nesmí zastavit práci
 const upozorni = (tiket_id, udalost) => { if (!S.tbdb) sb.functions.invoke('tiket-upozorneni', { body: { tiket_id, udalost } }).catch(() => {}); };
 const MAX_MB = 10;
 
@@ -67,13 +67,13 @@ async function poPrihlaseni() {
   S.user = user;
   const [{ data: vedeni }, { data: tbdb }, { data: nabor }] = await Promise.all([sb.rpc('ma_pravo', { p: 'vedeni' }), sb.rpc('ma_pravo', { p: 'superadmin' }), sb.rpc('ma_pravo', { p: 'nabor' })]);
   document.getElementById('odhlasit').classList.remove('hidden');
-  if (!vedeni) { $app.innerHTML = msg('Tento účet nemá přístup do kanceláře. Ozvěte se Tbdb.', 'warn'); return; }
+  if (!vedeni) { $app.innerHTML = msg('Tento účet nemá přístup do kanceláře. Ozvěte se TBDB.', 'warn'); return; }
   S.tbdb = !!tbdb; S.nabor = !!nabor; S.vedeni = !!vedeni;
   S.smlouvy = !!(await sb.rpc('ma_pravo', { p: 'smlouvy' })).data;
   if (S.smlouvy) S.podpisuji = (await sb.from('podpisujici').select('jmeno,opravneni,do_').eq('auth_user_id', user.id).maybeSingle()).data;
   if (S.podpisuji?.do_ && new Date(S.podpisuji.do_) < new Date()) S.podpisuji = null;
   S.jmeno = (user.user_metadata && user.user_metadata.jmeno) || user.email.split('@')[0];
-  if (S.tbdb) S.jmeno += ' (Tbdb)';
+  if (S.tbdb) S.jmeno += ' (TBDB)';
   document.getElementById('kdo').textContent = S.jmeno;
   S.nabor ? vLide() : vUvod();   // úvodní obrazovka kanceláře = Lidé
 }
@@ -110,14 +110,14 @@ function zapniDiktovani() {
   });
 }
 
-// ---------- dotazy: Vixen píše, Tbdb odpovídá – stejná obrazovka, jen jiný pohled ----------
+// ---------- dotazy: Vixen píše, TBDB odpovídá – stejná obrazovka, jen jiný pohled ----------
 async function vUvod(hlaska) {
   await nactiTikety();
   const radek = (t) => `<div class="tik${naTahu(t) ? ' natahu' : ''}" data-id="${t.id}"><span><b>#${t.cislo} ${esc(t.predmet)}</b>${t.spech ? ' ⚡' : ''}<small>${TYP[t.typ]} · ${esc(t.autor_jmeno)} · ${kdy(t.zmeneno)}</small></span><span class="tag ${stavT(t.stav)[1]}">${stavT(t.stav)[0]}</span></div>`;
   const razeni = (a, b) => (b.spech - a.spech) || (a.zmeneno < b.zmeneno ? -1 : 1);   // spěchá nahoře, pak nejstarší
   const tah = S.tikety.filter(naTahu).sort(razeni), ostatni = S.tikety.filter((t) => t.stav !== 'hotovo' && !naTahu(t)), hotove = S.tikety.filter((t) => t.stav === 'hotovo');
-  const formular = `<div class="card"><h2 style="margin-top:0">Napište nám (Tbdb)</h2>
-    <p class="pozn">Dotaz, problém nebo nápad k aplikaci. Tbdb dostane upozornění e-mailem a odpoví tady – uvidíte to v seznamu níže.</p>
+  const formular = `<div class="card"><h2 style="margin-top:0">Napište nám (TBDB)</h2>
+    <p class="pozn">Dotaz, problém nebo nápad k aplikaci. TBDB dostane upozornění e-mailem a odpoví tady – uvidíte to v seznamu níže.</p>
     <form id="f" novalidate>
      <div class="fld" data-f="typ"><label>Co potřebujete</label><div class="chips typy">
       ${Object.entries(TYP).map(([k, v], i) => `<label><input type="radio" name="typ" value="${k}"${i ? '' : ' checked'}> ${v}</label>`).join('')}</div><div class="err"></div></div>
@@ -129,9 +129,9 @@ async function vUvod(hlaska) {
     </form></div>`;
   $app.innerHTML = `${await menu('dotazy')}<h1>${S.tbdb ? 'Dotazy od Vixen' : 'Dobrý den, ' + esc(K.vokativ(S.jmeno))}</h1>
    ${hlaska || ''}
-   ${S.tbdb ? '<p class="pozn">Stejný seznam vidí Vixen. Odpovídáte v detailu dotazu, stav mění jen Tbdb. Nahoře je, co čeká na vás – spěchající první.</p>' : formular}
-   <h2>${S.tbdb ? 'Čeká na Tbdb' : 'Čeká na vaši odpověď'} <span class="mute">(${tah.length})</span></h2>${tah.map(radek).join('') || '<p class="mute">Nic – vše vyřízeno.</p>'}
-   <h2>${S.tbdb ? 'Čeká na Vixen' : 'Otevřené dotazy – řeší Tbdb'} <span class="mute">(${ostatni.length})</span></h2>${ostatni.map(radek).join('') || '<p class="mute">Žádné.</p>'}
+   ${S.tbdb ? '<p class="pozn">Stejný seznam vidí Vixen. Odpovídáte v detailu dotazu, stav mění jen TBDB. Nahoře je, co čeká na vás – spěchající první.</p>' : formular}
+   <h2>${S.tbdb ? 'Čeká na TBDB' : 'Čeká na vaši odpověď'} <span class="mute">(${tah.length})</span></h2>${tah.map(radek).join('') || '<p class="mute">Nic – vše vyřízeno.</p>'}
+   <h2>${S.tbdb ? 'Čeká na Vixen' : 'Otevřené dotazy – řeší TBDB'} <span class="mute">(${ostatni.length})</span></h2>${ostatni.map(radek).join('') || '<p class="mute">Žádné.</p>'}
    ${hotove.length ? `<h2>Vyřešené <span class="mute">(${hotove.length})</span></h2>${hotove.map(radek).join('')}` : ''}`;
   zapniMenu();
   $app.querySelectorAll('.tik').forEach((el) => (el.onclick = () => vDetail(el.dataset.id)));
@@ -186,7 +186,7 @@ async function menu(aktivni) {
   const [{ count }, { count: dotazy }] = await Promise.all([sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec'),
     sb.from('tiket').select('id', { count: 'exact', head: true }).in('stav', S.tbdb ? ['novy', 'resime'] : ['ceka_na_vas'])]);
   document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', aktivni === 'lide' || aktivni === 'nastenka');
-  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Přihlášky', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro Tbdb', dotazy]];
+  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Přihlášky', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
   return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
@@ -658,10 +658,10 @@ async function vDetail(id) {
    <p><span class="tag ${stavT(t.stav)[1]}">${stavT(t.stav)[0]}</span> <span class="mute">${TYP[t.typ]}${t.spech ? ' · spěchá' : ''}</span></p>
    <div class="zpr"><small>${esc(t.autor_jmeno)} · ${kdy(t.vytvoreno)}</small><div style="white-space:pre-wrap">${esc(t.text)}</div></div>
    ${(pril || []).map((p) => `<p>📎 <a href="#" data-cesta="${esc(p.cesta)}">${esc(p.nazev)}</a></p>`).join('')}
-   ${(zpr || []).map((z) => `<div class="zpr${z.autor_jmeno.includes('(Tbdb)') ? ' tbdb' : ''}"><small>${esc(z.autor_jmeno)} · ${kdy(z.vytvoreno)}</small><div style="white-space:pre-wrap">${esc(z.text)}</div></div>`).join('')}
+   ${(zpr || []).map((z) => `<div class="zpr${/\(tbdb\)/i.test(z.autor_jmeno) ? ' tbdb' : ''}"><small>${esc(z.autor_jmeno)} · ${kdy(z.vytvoreno)}</small><div style="white-space:pre-wrap">${esc(z.text)}</div></div>`).join('')}
    <form id="f" class="card" novalidate>
     <div class="fld" data-f="text"><label for="text">Odpověď</label><textarea id="text" rows="3" placeholder="Napište nebo nadiktujte"></textarea>${mikrofon('text')}<div class="err"></div></div>
-    ${S.tbdb ? `<div class="fld"><label for="stav">Stav (jen Tbdb)</label><select id="stav">${Object.keys(STAV).map((k) => `<option value="${k}"${k === t.stav ? ' selected' : ''}>${stavT(k)[0]}</option>`).join('')}</select><div class="err"></div></div>` : ''}
+    ${S.tbdb ? `<div class="fld"><label for="stav">Stav (jen TBDB)</label><select id="stav">${Object.keys(STAV).map((k) => `<option value="${k}"${k === t.stav ? ' selected' : ''}>${stavT(k)[0]}</option>`).join('')}</select><div class="err"></div></div>` : ''}
     <button class="btn" type="submit">${S.tbdb ? 'Uložit' : 'Odeslat'}</button></form>`;
   document.getElementById('zpet').onclick = (e) => { e.preventDefault(); vUvod(); };
   zapniMenu(); zapniDiktovani();

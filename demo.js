@@ -56,7 +56,7 @@ stavy.forEach((stav, i) => {
       odeslano_at: iso(ode), odeslano_na: db.nastup[id].email_smlouvy, odstoupeni_do: iso(new Date(+ode + 7 * DEN)), odstoupeno_at: null, pdf_cesta: null, dokument_sablona: sabl }]; }
   else if (r < 90) db.dok[id] = [{ id: 'dd-' + i, stav: 'k_podpisu', obsah, vytvoreno: iso(new Date(TED - 2 * DEN)), ...(r < 85 ? VIX(iso(new Date(TED - DEN))) : {}), podepsano_at: null, podpis: null, dokument_sablona: sabl }];
 });
-db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro Tbdb', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
+db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro TBDB', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
 
 // ilustrační „fotky“ (vymyšlené postavy, žádné skutečné osoby) – SVG podle cesty
 window.VIXEN_DEMO_FOTO = (cesta) => {
