@@ -79,3 +79,10 @@ a{color:var(--gold-d)}
 .okr-pocet{color:var(--mute);font-size:13px}
 .okr-vse{margin-left:auto;font-size:13px}
 .okresy .chips label{font-size:13px;padding:5px 10px}
+
+/* fotky v profilu */
+.fotky{display:flex;gap:10px;flex-wrap:wrap}
+.fotky figure{position:relative;margin:0;width:104px;height:138px;border-radius:12px;overflow:hidden;background:#eee8dc}
+.fotky img{width:100%;height:100%;object-fit:cover}
+.fotky .smaz{position:absolute;top:4px;right:4px;border:0;border-radius:50%;width:26px;height:26px;background:rgba(0,0,0,.6);color:#fff;cursor:pointer}
+.fotky .pridat{width:104px;height:138px;border:2px dashed var(--gold);border-radius:12px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--gold-d);font-weight:600;cursor:pointer;font-size:14px;line-height:1.4}

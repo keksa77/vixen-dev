@@ -70,6 +70,50 @@ body.siroka main{max-width:1440px}
 .dok-r{display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px solid #f0ebe1;padding:6px 0}.dok-r small{display:block;color:var(--mute);font-size:12px}
 .hist{margin:0;padding-left:18px;font-size:13.5px;color:var(--ink)}
 @media(max-width:900px){.lide{grid-template-columns:1fr}.filtry{display:none;position:static;max-height:none}.filtry.otevreno{display:block}#filtry-prepni{display:inline-block}}
+
+/* boční menu (podle návrhu obrazovek) */
+body.ma-side main{max-width:none;margin-left:210px;padding-left:24px;padding-right:24px}
+.kside{position:fixed;left:0;top:54px;bottom:0;width:210px;background:#23201b;display:flex;flex-direction:column;gap:2px;padding:14px 10px;border:0;z-index:5;overflow:auto}
+.kside button{text-align:left;color:#d8cfbd;border:0;border-radius:9px;padding:10px 12px;font:inherit;font-weight:600;background:none;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kside button:hover:not([disabled]){background:#34302a;color:#fff}
+.kside button.on{background:var(--gold);color:#fff}
+.kside button[disabled]{color:#7d7568;cursor:default;font-weight:500}
+.kside button small{flex-basis:100%;font-size:11px;font-weight:400;color:#7d7568;margin-top:-2px}
+.kside .pocet{margin-left:auto}
+/* nástěnka */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:14px 0 26px}
+.tile{border:0;border-radius:14px;padding:16px;text-align:left;font:inherit;font-size:14.5px;background:#fff;border-left:6px solid #c9c0ad;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.tile .n{font-size:34px;font-weight:800;line-height:1.1;margin-bottom:2px}
+.tile.y{border-left-color:#e0a32a}.tile.y .n{color:#9a6512}.tile.r{border-left-color:var(--bad)}.tile.r .n{color:var(--bad)}.tile.g{border-left-color:var(--ok)}.tile.g .n{color:var(--ok)}
+.tile.seda{cursor:default;color:var(--mute)}.tile small{display:block;font-size:11.5px}
+.tile:hover:not(.seda){box-shadow:0 3px 10px rgba(0,0,0,.12)}
+/* tabulka Lidé – filtry ve sloupcích, fotky, semafor */
+.shrnuti{font-size:13px;color:var(--ink);background:var(--gold-s);border-radius:99px;padding:3px 10px}
+.filtry-radek td{background:#faf7f1;padding:6px 6px 8px;border-bottom:2px solid var(--line);vertical-align:top}
+.filtry-radek input,.filtry-radek select{width:100%;min-width:70px;padding:5px 6px;border:1px solid var(--line);border-radius:7px;font:inherit;font-size:12.5px;background:#fff}
+.filtry-radek .od-do{display:flex;gap:4px;min-width:96px}.filtry-radek .od-do input{min-width:0;width:50%;padding:5px 4px}
+.filtry-radek input[type=checkbox]{width:auto;min-width:0}
+.filtry-radek .mini-sel{min-width:62px}
+details.vf{position:relative;margin-top:4px}
+details.vf summary{list-style:none;cursor:pointer;font-size:12px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+details.vf summary::after{content:' ▾';color:var(--mute)}details.vf.aktivni summary{background:var(--gold-s);border-color:var(--gold);font-weight:600}
+details.vf summary::-webkit-details-marker{display:none}
+.vf-panel{position:absolute;z-index:15;top:calc(100% + 4px);left:0;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 12px;min-width:200px;max-height:340px;overflow:auto;font-size:13.5px;font-weight:400}
+.vf-panel b{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);margin:4px 0 6px}
+.vf-panel label{display:flex;gap:8px;align-items:center;justify-content:flex-start;text-align:left;padding:3px 0;cursor:pointer;white-space:nowrap}
+.vf-panel select{width:100%;margin-top:4px}
+.lide-tab td.prazdno{text-align:center;color:var(--mute);padding:30px}
+.foto{display:inline-flex;width:40px;height:52px;border-radius:8px;overflow:hidden;background:#eee8dc;align-items:center;justify-content:center;font-weight:700;color:#a59c8b;font-size:13px;vertical-align:middle}
+.foto img{width:100%;height:100%;object-fit:cover}
+.foto.bez{border:1px dashed #cfc5b2}
+.foto.velka{width:96px;height:124px;font-size:22px}
+.foto-velka{position:fixed;z-index:30;width:260px;height:340px;border-radius:14px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.3);background:#fff;pointer-events:none;border:4px solid #fff}
+.foto-velka img{width:100%;height:100%;object-fit:cover}
+.tecka{font-size:17px;line-height:1;color:#d8d1c3}.tecka.ok{color:var(--ok)}.tecka.wa{color:#e0a32a}.tecka.no{color:var(--bad)}
+.lide-tab td.tecka{text-align:center}
+.det-fotky{display:flex;gap:8px;align-items:center;margin:12px 0;overflow-x:auto}.det-fotky img{width:120px;height:156px;object-fit:cover;border-radius:10px;background:#eee8dc}
+@media(max-width:900px){body.ma-side main{margin-left:0;padding-left:16px;padding-right:16px}
+ .kside{position:static;width:auto;flex-direction:row;overflow-x:auto;padding:8px;margin:-16px -16px 14px}.kside button{white-space:nowrap;flex:0 0 auto}.kside button small{display:none}}
 </style>
 </head>
 <body>

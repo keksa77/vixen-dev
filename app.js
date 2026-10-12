@@ -147,6 +147,8 @@ function vRegistrace() {
    ${pole('telefon', 'Telefon', '', { typ: 'tel', ac: 'tel', ph: '777 123 456', im: 'tel' })}
    ${pole('email', 'E-mail', '', { typ: 'email', ac: 'email', ph: 'jana@seznam.cz', hint: 'Na tento e-mail se budete přihlašovat.' })}
    ${pole('obec', 'Kde bydlíte (obec / město)', '', { ac: 'address-level2' })}
+   <div class="fld" data-f="fotky"><label>Fotky (1–3) – portrét nebo postava</label><div class="fotky" id="reg-fotky"></div><div class="err"></div>
+     <div class="hint">Fotka se zmenší přímo v telefonu. Uvidí ji jen kancelář Vixen.</div></div>
    ${oblastHtml(null)}
    <div class="fld" data-f="zajem"><label>Mám zájem o</label><div class="chips">
      <label><input type="checkbox" name="zajem" value="hosteska" checked> hosteska</label>
@@ -161,11 +163,26 @@ function vRegistrace() {
    <p class="mute" style="text-align:center"><a href="#" id="zpet">Už jsem registrovaná – přihlásit</a></p>`;
   document.getElementById('zpet').onclick = (e) => { e.preventDefault(); vPrihlaseni(); };
   zapniOblast();
+  S.regFotky = [];
+  const kresliRegFotky = () => {
+    const box = document.getElementById('reg-fotky');
+    box.innerHTML = S.regFotky.map((f, i) => `<figure><img src="${f.url}" alt="Fotka ${i + 1}"><button type="button" class="smaz" data-i="${i}" title="Odebrat">✕</button></figure>`).join('')
+      + (S.regFotky.length < 3 ? '<label class="pridat"><input type="file" id="reg-foto" accept="image/jpeg,image/png,image/webp" hidden><span>＋<br>Přidat fotku</span></label>' : '');
+    box.querySelectorAll('.smaz').forEach((b) => (b.onclick = () => { S.regFotky.splice(+b.dataset.i, 1); kresliRegFotky(); }));
+    const v = document.getElementById('reg-foto');
+    if (v) v.onchange = async () => {
+      const f = v.files[0]; if (!f || !/^image\//.test(f.type)) return;
+      const blob = await zmensi(f); S.regFotky.push({ blob, url: URL.createObjectURL(blob) }); kresliRegFotky();
+      const fld = document.querySelector('.fld[data-f="fotky"]'); fld.classList.remove('chyba'); fld.querySelector('.err').textContent = '';
+    };
+  };
+  kresliRegFotky();
   const vyber = (n) => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map((x) => x.value);
   const kontrola = () => ({
     jmeno: K.povinne(val('jmeno'), 'jméno'), prijmeni: K.povinne(val('prijmeni'), 'příjmení'),
     telefon: K.telefonChyba(val('telefon')), email: K.emailChyba(val('email')),
     oblast: oblastVyber().length ? '' : 'Vyberte aspoň jeden kraj a v něm aspoň jedno město.', obec: K.povinne(val('obec'), 'obec'),
+    fotky: S.regFotky.length ? '' : 'Přidejte aspoň jednu fotku.',
     zajem: vyber('zajem').length ? '' : 'Vyberte aspoň jednu možnost.',
     gdpr: val('gdpr') ? '' : 'Bez souhlasu vás nemůžeme evidovat.',
   });
@@ -173,8 +190,16 @@ function vRegistrace() {
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     if (!ukazChyby(kontrola())) return;
-    const b = e.target.querySelector('button'); b.disabled = true; b.textContent = 'Odesílám…';
-    const { error } = await sb.rpc('registrace', { p: {
+    const b = e.target.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Odesílám…';
+    const fotky = [];
+    for (const f of S.regFotky) {
+      const cesta = f.cesta || `registrace/${crypto.randomUUID()}.jpg`;
+      if (!f.cesta) { const up = await sb.storage.from('fotky').upload(cesta, f.blob, { contentType: 'image/jpeg' });
+        if (up.error) { b.disabled = false; b.textContent = 'Odeslat registraci'; return chybaFormu(e.target, 'Fotku se nepodařilo nahrát – zkuste to prosím znovu.'); }
+        f.cesta = cesta; }
+      fotky.push(cesta);
+    }
+    const { error } = await sb.rpc('registrace', { p: { fotky,
       jmeno: val('jmeno'), prijmeni: val('prijmeni'), telefon: K.telefonNormalizuj(val('telefon')), email: val('email').toLowerCase(),
       okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze } });
     if (error) {
@@ -230,14 +255,16 @@ async function poPrihlaseni() {
   ukaz('prehled');
 }
 async function nacti() {
-  const [o, p, n, d, oo] = await Promise.all([
+  const [o, p, n, d, oo, ff] = await Promise.all([
     sb.from('osoba').select('*').single(),
     sb.from('osoba_profil').select('*').maybeSingle(),
     sb.from('osoba_nastup').select('*').maybeSingle(),
     sb.from('dokument').select('id,stav,obsah,vytvoreno,podepsano_at,podpis,dokument_sablona(nazev,druh)').order('vytvoreno', { ascending: false }),
     sb.from('osoba_okres').select('okres_kod'),
+    sb.from('osoba_foto').select('id,cesta,poradi').order('poradi'),
   ]);
   S.okresy = (oo.data || []).map((x) => x.okres_kod);
+  S.fotky = ff.data || [];
   S.osoba = o.data; S.profil = p.data; S.nastup = n.data; S.dokumenty = (d.data || []).filter((x) => x.stav !== 'zruseno');
   document.getElementById('kdo').textContent = S.osoba ? S.osoba.jmeno + ' ' + S.osoba.prijmeni : '';
 }
@@ -257,7 +284,7 @@ function kroky() {
   return [
     { t: 'Registrace', kdo: 'vy', hotovo: true, popis: 'kontakt, kde můžete pracovat' },
     { t: 'Schválení kanceláří', kdo: 'kanc', hotovo: ok, popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata' : 'kancelář projde vaši registraci' },
-    { t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil, popis: 'výška, konfekce, jazyky, kdy můžete', tlac: 'Doplnit profil' },
+    { t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil, popis: 'fotka, výška, konfekce, jazyky, kdy můžete', tlac: 'Doplnit profil' },
     { t: 'Údaje pro smlouvu', v: 'nastup', kdo: 'vy', hotovo: !!S.nastup?.potvrzeno_at, popis: 'rodné číslo, adresa, pojišťovna, účet', tlac: 'Vyplnit údaje' },
     { t: 'Podpis smlouvy (DPP)', v: 'dokumenty', kdo: 'vy', hotovo: dpp?.stav === 'podepsano', popis: dpp && dpp.stav !== 'podepsano' ? 'smlouva čeká na váš podpis' : 'přečíst a podepsat kódem', tlac: dpp ? 'Podepsat smlouvu' : 'Připravit smlouvu' },
     { t: 'Přihlášení na ČSSZ', kdo: 'kanc', hotovo: false, popis: 'kancelář vás přihlásí před první akcí' },
@@ -293,12 +320,48 @@ function vPrehled() {
   $app.querySelectorAll('.cesta li[data-v]').forEach((el) => (el.onclick = () => ukaz(el.dataset.v)));
 }
 
+
+// ---------- fotky v profilu (soukromé úložiště, zmenšené v telefonu před nahráním) ----------
+const MAX_FOTEK = 3;
+async function zmensi(soubor, max = 1200) {
+  const img = await new Promise((ok, chyba) => { const i = new Image(); i.onload = () => ok(i); i.onerror = chyba; i.src = URL.createObjectURL(soubor); });
+  const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
+}
+async function fotkyBlok(hlaska = '') {
+  const box = document.getElementById('fotky'); if (!box) return;
+  const urls = S.fotky.length ? ((await sb.storage.from('fotky').createSignedUrls(S.fotky.map((f) => f.cesta), 3600)).data || []) : [];
+  box.innerHTML = `<h2 style="margin-top:0">Fotky</h2><p class="mute">Aspoň jedna aktuální fotka postavy nebo portrétu – kancelář podle ní vybírá lidi na akce. Vidí ji jen kancelář Vixen.</p>${hlaska}
+   <div class="fotky">${S.fotky.map((f, i) => `<figure><img src="${esc(urls[i]?.signedUrl || '')}" alt="Fotka ${i + 1}"><button type="button" class="smaz" data-id="${f.id}" title="Smazat fotku">✕</button></figure>`).join('')}
+   ${S.fotky.length < MAX_FOTEK ? `<label class="pridat"><input type="file" id="foto-vstup" accept="image/jpeg,image/png,image/webp" hidden><span>＋<br>Přidat fotku</span></label>` : ''}</div>`;
+  const vstup = document.getElementById('foto-vstup');
+  if (vstup) vstup.onchange = async () => {
+    const f = vstup.files[0]; if (!f) return;
+    if (!/^image\//.test(f.type)) return fotkyBlok(msg('Vyberte prosím obrázek (JPG, PNG).', 'bad'));
+    box.querySelector('.pridat span').innerHTML = 'Nahrávám…';
+    try {
+      const blob = await zmensi(f), cesta = `${S.osoba.id}/${Date.now()}.jpg`;
+      const up = await sb.storage.from('fotky').upload(cesta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error;
+      const ins = await sb.from('osoba_foto').insert({ osoba_id: S.osoba.id, cesta, poradi: S.fotky.length + 1 }).select('id,cesta,poradi').single(); if (ins.error) throw ins.error;
+      S.fotky.push(ins.data); fotkyBlok(msg('Fotka nahraná ✓'));
+    } catch (e) { fotkyBlok(msg(esc('Nahrání se nepovedlo: ' + chybaText(e)), 'bad')); }
+  };
+  box.querySelectorAll('.smaz').forEach((b) => (b.onclick = async () => {
+    const f = S.fotky.find((x) => x.id === b.dataset.id);
+    await sb.storage.from('fotky').remove([f.cesta]); const { error } = await sb.from('osoba_foto').delete().eq('id', f.id);
+    if (error) return fotkyBlok(msg(esc(chybaText(error)), 'bad'));
+    S.fotky = S.fotky.filter((x) => x.id !== f.id); fotkyBlok();
+  }));
+}
+
 // ---------- krok 3: profil ----------
 function vProfil() {
   if (!schvalena()) return ($app.innerHTML = '<h1>Profil</h1>' + msg('Profil půjde doplnit po schválení registrace.', 'warn'));
   const p = S.profil || {};
   const k = ['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((x) => ({ kod: x, nazev: x }));
   $app.innerHTML = `<h1>Profil</h1><p class="mute">Pomůže nám vybrat vhodnou akci. <span class="mute">(rozsah polí upřesní Vixen)</span></p>
+  <div class="card" id="fotky"></div>
   <form id="f" class="card" novalidate>
    <div class="row">${pole('vyska', 'Výška (cm)', p.vyska_cm ?? '', { typ: 'number', im: 'numeric' })}${pole('bota', 'Bota (EU)', p.bota_eu ?? '', { typ: 'number', im: 'decimal' })}</div>
    ${pole('konfekce', 'Konfekční velikost', '', { select: opt(k, p.konfekce, '—') })}
@@ -310,6 +373,7 @@ function vProfil() {
    ${oblastHtml(new Set(S.okresy))}
    <button class="btn" type="submit">Uložit profil</button></form>`;
   zapniOblast();
+  fotkyBlok();
   const kontrola = () => ({
     vyska: val('vyska') && (val('vyska') < 120 || val('vyska') > 220) ? 'Výška 120–220 cm.' : '',
     bota: val('bota') && (val('bota') < 30 || val('bota') > 50) ? 'Velikost bot 30–50.' : '',

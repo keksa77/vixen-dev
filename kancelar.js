@@ -174,12 +174,35 @@ async function odeslat(e) {
 async function menu(aktivni) {
   if (!S.nabor) return '';
   const { count } = await sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec');
-  document.body.classList.toggle('siroka', aktivni === 'lide');
-  return `<nav class="knav"><button data-v="lide"${aktivni === 'lide' ? ' class="on"' : ''}>Lidé</button><button data-v="prihlasky"${aktivni === 'prihlasky' ? ' class="on"' : ''}>Přihlášky${count ? ` <span class="pocet">${count}</span>` : ''}</button><button data-v="dotazy"${aktivni === 'dotazy' ? ' class="on"' : ''}>Dotazy pro Tbdb</button></nav>`;
+  document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', aktivni === 'lide' || aktivni === 'nastenka');
+  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Přihlášky', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', 'Dotazy pro Tbdb']];
+  return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
-  $app.querySelectorAll('.knav button').forEach((b) => (b.onclick = () => ({ prihlasky: vPrihlasky, lide: vLide, dotazy: vUvod })[b.dataset.v]()));
+  $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, dotazy: vUvod })[b.dataset.v]()));
 }
+
+// ---------- NÁSTĚNKA: „Dnes je potřeba“ ----------
+async function vNastenka() {
+  $app.innerHTML = `${await menu('nastenka')}<p class="mute">Načítám…</p>`; zapniMenu();
+  try { await nactiLidi(); } catch (e) { $app.innerHTML = (await menu('nastenka')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
+  const tym = S.lide.filter((o) => ['prijata', 'aktivni'].includes(o.stav));
+  const dlazdice = [
+    ['y', S.lide.filter((o) => o.stav === 'uchazec').length, 'nových přihlášek', () => vPrihlasky()],
+    ['r', tym.filter((o) => o.udaje && o.dpp !== 'podepsano').length, 'bez podepsané smlouvy (údaje mají)', () => lideFiltr({ udaje: 'ano', dpp: 'ne' })],
+    ['y', tym.filter((o) => !o.udaje).length, 'bez údajů pro smlouvu', () => lideFiltr({ udaje: 'ne' })],
+    ['y', tym.filter((o) => !o.ma_profil).length, 'bez profilu', () => lideFiltr({ profil: 'ne' })],
+    ['y', tym.filter((o) => !o.fotky.length).length, 'bez fotky', () => lideFiltr({ foto: 'ne' })],
+    ['g', tym.filter((o) => o.dpp === 'podepsano').length, 'připraveno s podepsanou DPP', () => lideFiltr({ dpp: 'ano' })],
+  ];
+  $app.innerHTML = `${await menu('nastenka')}<h1>Dnes je potřeba</h1><p class="mute">Počítá se z přijatých a aktivních lidí (${tym.length}). Kliknutím na dlaždici otevřete seznam.</p>
+   <div class="tiles">${dlazdice.map(([c, n, t], i) => `<button class="tile ${n ? c : 'g'}" data-i="${i}"><div class="n">${n}</div>${t}</button>`).join('')}
+    <div class="tile seda"><div class="n">–</div>nepřihlášeno ČSSZ<small>připravujeme</small></div><div class="tile seda"><div class="n">–</div>neobsazená místa na akcích<small>připravujeme</small></div></div>
+   <h2>Akce tento týden</h2><p class="mute">Akce a obsazování připravujeme – tady bude přehled obsazení a smluv pro každou akci.</p>`;
+  zapniMenu();
+  $app.querySelectorAll('.tile[data-i]').forEach((t) => (t.onclick = () => dlazdice[t.dataset.i][3]()));
+}
+function lideFiltr(f) { F = { ...F0(), ...f }; ulozF(); STRANA = 0; vLide(); }
 
 // ---------- přihlášky: schválení / odmítnutí uchazečů ----------
 const FILTR = { uchazec: ['Nové', ['uchazec']], prijate: ['Přijaté', ['prijata', 'aktivni']], odmitnute: ['Odmítnuté', ['odmitnuta', 'neaktivni']] };
@@ -199,12 +222,13 @@ function mistaText(kody) {
 }
 async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
   await ciselniky();
-  const { data, error } = await sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_poznamka(text)').in('stav', FILTR[filtr][1]).order('vytvoreno', { ascending: filtr !== 'uchazec' ? false : true });
+  const { data, error } = await sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_poznamka(text), osoba_foto(cesta,poradi)').in('stav', FILTR[filtr][1]).order('vytvoreno', { ascending: filtr !== 'uchazec' ? false : true });
   if (error) { $app.innerHTML = msg(esc(chyba(error)), 'bad'); return; }
   for (const o of data || []) o.osoba_poznamka = Array.isArray(o.osoba_poznamka) ? o.osoba_poznamka[0] || null : o.osoba_poznamka;
   const karta = (o) => `<div class="card prihl" data-id="${o.id}">
      <div class="prihl-hl"><b>${esc(o.jmeno)} ${esc(o.prijmeni)}</b><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span></div>
      <small class="mute">Registrace ${kdy(o.vytvoreno)}</small>
+     <div class="det-fotky">${(o.osoba_foto || []).length ? [...o.osoba_foto].sort((a, b) => a.poradi - b.poradi).map((f) => `<img data-cesta="${esc(f.cesta)}" alt="">`).join('') : '<span class="mute">Bez fotky</span>'}</div>
      <dl>
       <dt>Telefon</dt><dd><a href="tel:${esc(o.telefon)}">${esc(o.telefon)}</a></dd>
       <dt>E-mail</dt><dd><a href="mailto:${esc(o.email)}">${esc(o.email)}</a></dd>
@@ -228,6 +252,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
     ${(data || []).map(karta).join('') || `<p class="mute">${filtr === 'uchazec' ? 'Žádné nové přihlášky.' : 'Nic tu není.'}</p>`}
     <p class="pozn">Po schválení se hosteska může přihlásit e-mailem z registrace a doplnit profil a údaje pro smlouvu. E-mail o schválení zatím neposíláme (DOPLNIT po nastavení odesílání) – dejte jí prosím vědět.</p>`;
   zapniMenu();
+  podepisFotky((data || []).flatMap((o) => (o.osoba_foto || []).map((f) => f.cesta))).then(() => $app.querySelectorAll('.prihl img[data-cesta]').forEach((i) => (i.src = S.fotoUrl[i.dataset.cesta] || '')));
   $app.querySelectorAll('input[name=filtr]').forEach((r) => (r.onchange = () => vPrihlasky(r.value)));
   $app.querySelectorAll('.prihl').forEach((karta) => {
     const id = karta.dataset.id, form = karta.querySelector('form'), potvrd = karta.querySelector('.potvrd');
@@ -259,7 +284,7 @@ async function zmenStav(o, novy, form) {
 
 // ---------- LIDÉ: přehled všech hostesek s filtry, hromadnými akcemi a detailem ----------
 const KONFEKCE = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-const F0 = () => ({ text: '', stav: ['prijata', 'aktivni'], kraje: [], okres: '', zajem: [], kanal: [], vyskaOd: '', vyskaDo: '', konfekce: [], jazyk: '', ridicak: false, auto: false, profil: '', udaje: '', dpp: '', vekOd: '', vekDo: '', regOd: '' });
+const F0 = () => ({ text: '', tel: '', foto: '', stav: ['prijata', 'aktivni'], kraje: [], okres: '', zajem: [], kanal: [], vyskaOd: '', vyskaDo: '', konfekce: [], jazyk: '', ridicak: false, auto: false, profil: '', udaje: '', dpp: '', vekOd: '', vekDo: '', regOd: '' });
 let F = F0(), RAZENI = { k: 'reg', smer: -1 }, STRANA = 0;
 const NA_STRANU = 50;
 try { const ul = JSON.parse(localStorage.getItem('vixen_lide_filtr') || 'null'); if (ul) F = { ...F0(), ...ul }; } catch {}
@@ -267,30 +292,46 @@ const ulozF = () => { try { localStorage.setItem('vixen_lide_filtr', JSON.string
 const bezDiakritiky = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const datum = (d) => (d ? new Date(d).toLocaleDateString('cs-CZ') : '');
 const krajeOsoby = (o) => [...new Set(o.okresy.map((k) => S.cis.okres[k]?.kraj_kod).filter(Boolean))];
+S.fotoUrl = S.fotoUrl || {};
 
 async function nactiLidi() {
   await ciselniky();
   const [a, b] = await Promise.all([
-    sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_profil(*), osoba_poznamka(text)').order('vytvoreno', { ascending: false }),
+    sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_profil(*), osoba_poznamka(text), osoba_foto(cesta,poradi)').order('vytvoreno', { ascending: false }),
     sb.rpc('kancelar_lide'),
   ]);
   if (a.error) throw a.error;
   const stav = Object.fromEntries((b.data || []).map((x) => [x.osoba_id, x]));
   const jeden = (x) => (Array.isArray(x) ? x[0] || null : x);
   S.lide = (a.data || []).map((o) => {
-    const p = jeden(o.osoba_profil), s = stav[o.id] || {};
-    return { ...o, profil: p, pozn: jeden(o.osoba_poznamka)?.text || '', okresy: (o.osoba_okres || []).map((x) => x.okres_kod),
+    const p = jeden(o.osoba_profil), s = stav[o.id] || {}, fotky = [...(o.osoba_foto || [])].sort((x, y) => x.poradi - y.poradi);
+    return { ...o, profil: p, pozn: jeden(o.osoba_poznamka)?.text || '', okresy: (o.osoba_okres || []).map((x) => x.okres_kod), fotky: fotky.map((f) => f.cesta),
       ma_profil: !!p, udaje: !!s.udaje_hotove, vek: s.vek ?? null, dpp: s.dpp_stav || '', dpp_at: s.dpp_podepsano_at || null,
-      hledej: bezDiakritiky([o.jmeno, o.prijmeni, o.email, o.telefon, o.obec].join(' ')) };
+      hledej: bezDiakritiky([o.jmeno, o.prijmeni, o.email, o.obec].join(' ')) };
   });
 }
 
+// podepsané odkazy na fotky (soukromé úložiště) – jen pro to, co je vidět
+async function podepisFotky(cesty) {
+  const chybi = [...new Set(cesty)].filter((c) => c && !S.fotoUrl[c]);
+  if (!chybi.length) return;
+  if (window.VIXEN_DEMO_FOTO) { chybi.forEach((c) => (S.fotoUrl[c] = window.VIXEN_DEMO_FOTO(c))); return; }
+  const { data } = await sb.storage.from('fotky').createSignedUrls(chybi, 3600);
+  (data || []).forEach((d, i) => { if (d.signedUrl) S.fotoUrl[chybi[i]] = d.signedUrl; });
+}
+const inicialy = (o) => esc((o.jmeno[0] || '') + (o.prijmeni[0] || ''));
+const nahled = (o, velky) => o.fotky[0]
+  ? `<span class="foto${velky ? ' velka' : ''}" data-cesta="${esc(o.fotky[0])}"><img alt="" src="${esc(S.fotoUrl[o.fotky[0]] || '')}"></span>`
+  : `<span class="foto bez${velky ? ' velka' : ''}" title="Bez fotky">${inicialy(o)}</span>`;
+
 function filtruj() {
-  const t = bezDiakritiky(F.text).trim(), tel = F.text.replace(/\D/g, '');
+  const t = bezDiakritiky(F.text).trim(), tel = F.tel.replace(/\D/g, '');
   const tri = (hodnota, f) => !f || (f === 'ano' ? hodnota : !hodnota);
   const num = (v) => (v === '' || v == null ? null : Number(v));
   return S.lide.filter((o) => {
-    if (t && !(o.hledej.includes(t) || (tel.length >= 3 && o.telefon.replace(/\D/g, '').includes(tel)))) return false;
+    if (t && !o.hledej.includes(t)) return false;
+    if (tel && !o.telefon.replace(/\D/g, '').includes(tel)) return false;
+    if (F.foto && (F.foto === 'ano') !== o.fotky.length > 0) return false;
     if (F.stav.length && !F.stav.includes(o.stav)) return false;
     if (F.kraje.length && !krajeOsoby(o).some((k) => F.kraje.includes(k))) return false;
     if (F.okres && !o.okresy.includes(F.okres)) return false;
@@ -311,55 +352,76 @@ function filtruj() {
   });
 }
 const RAD = {
-  jmeno: (o) => bezDiakritiky(o.prijmeni + ' ' + o.jmeno), stav: (o) => o.stav, vyska: (o) => o.profil?.vyska_cm ?? 0,
+  profil: (o) => (o.ma_profil ? 1 : 0), udaje: (o) => (o.udaje ? 1 : 0), dpp: (o) => (o.dpp === 'podepsano' ? 2 : o.dpp ? 1 : 0),
+  jmeno: (o) => bezDiakritiky(o.prijmeni + ' ' + o.jmeno), stav: (o) => o.stav, vyska: (o) => o.profil?.vyska_cm ?? 0, foto: (o) => o.fotky.length,
   vek: (o) => o.vek ?? 0, reg: (o) => o.vytvoreno, podklady: (o) => (o.ma_profil ? 1 : 0) + (o.udaje ? 1 : 0) + (o.dpp === 'podepsano' ? 1 : 0),
 };
 const serad = (l) => [...l].sort((a, b) => { const x = RAD[RAZENI.k](a), y = RAD[RAZENI.k](b); return (x > y ? 1 : x < y ? -1 : 0) * RAZENI.smer; });
 
-function chipy(nazev, volby, vybrane) {
-  return `<div class="chips mini">${volby.map(([k, v]) => `<label><input type="checkbox" data-f="${nazev}" value="${esc(k)}"${vybrane.includes(k) ? ' checked' : ''}> ${esc(v)}</label>`).join('')}</div>`;
+// filtr ve sloupci: rozbalovací seznam zaškrtávátek
+const vf = (nazev, titul, volby, extra = '') => `<details class="vf" data-vf="${nazev}"><summary></summary><div class="vf-panel"><b>${titul}</b>
+  ${volby.map(([k, v]) => `<label><input type="checkbox" data-f="${nazev}" value="${esc(k)}"${F[nazev].includes(k) ? ' checked' : ''}> ${esc(v)}</label>`).join('')}${extra}</div></details>`;
+const triSel = (nazev, popis) => `<label class="tri">${popis}<select data-f="${nazev}"><option value="">vše</option><option value="ano"${F[nazev] === 'ano' ? ' selected' : ''}>ano</option><option value="ne"${F[nazev] === 'ne' ? ' selected' : ''}>ne</option></select></label>`;
+function popiskyFiltru() {
+  const pocet = (n) => (n ? ` (${n})` : '');
+  const nast = {
+    stav: () => (F.stav.length ? F.stav.map((k) => STAV_O[k][0]).join(', ') : 'vše'),
+    kraje: () => (F.kraje.length ? `kraje${pocet(F.kraje.length)}` : 'vše') + (F.okres ? ' · ' + (S.cis.okres[F.okres]?.mesto || '') : ''),
+    zajem: () => (F.zajem.length ? F.zajem.map((k) => ZAJEM[k]).join(', ') : 'vše'),
+    kanal: () => (F.kanal.length ? F.kanal.map((k) => KANAL[k]).join(', ') : 'kontakt přes'),
+    konfekce: () => (F.konfekce.length ? F.konfekce.join(', ') : 'velikost'),
+    jazykx: () => [F.ridicak && 'řidičák', F.auto && 'auto'].filter(Boolean).join(', ') || 'řidičák / auto',
+    podklady: () => [F.profil && 'P ' + F.profil, F.udaje && 'Ú ' + F.udaje, F.dpp && 'D ' + F.dpp].filter(Boolean).join(', ') || 'vše',
+  };
+  document.querySelectorAll('details.vf').forEach((d) => { const f = nast[d.dataset.vf]; d.querySelector('summary').textContent = f ? f() : ''; d.classList.toggle('aktivni', f && !/^(vše|kontakt přes|velikost|řidičák \/ auto)$/.test(f())); });
 }
-const tri = (nazev, popis) => `<label class="tri">${popis}<select data-f="${nazev}"><option value="">vše</option><option value="ano"${F[nazev] === 'ano' ? ' selected' : ''}>ano</option><option value="ne"${F[nazev] === 'ne' ? ' selected' : ''}>ne</option></select></label>`;
 
 async function vLide(hlaska = '') {
   $app.innerHTML = `${await menu('lide')}<p class="mute">Načítám lidi…</p>`; zapniMenu();
   try { await nactiLidi(); } catch (e) { $app.innerHTML = (await menu('lide')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
   const krajeVolby = Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs'));
-  const okresy = Object.values(S.cis.okres).filter((o) => !F.kraje.length || F.kraje.includes(o.kraj_kod)).sort((a, b) => a.mesto.localeCompare(b.mesto, 'cs'));
+  const okresy = Object.values(S.cis.okres).sort((a, b) => a.mesto.localeCompare(b.mesto, 'cs'));
+  const th = (k, t) => (k ? `<th data-k="${k}" class="raz">${t}<i></i></th>` : `<th>${t}</th>`);
   $app.innerHTML = `${await menu('lide')}
-   <div class="lide-hlava"><h1>Lidé</h1><input id="hledat" type="search" placeholder="Hledat jméno, telefon, e-mail, obec…" value="${esc(F.text)}"><span id="pocet" class="mute"></span>
-    <button class="btn o mini" id="filtry-prepni">Filtry</button></div>${hlaska}
-   <div class="lide">
-    <aside class="filtry" id="filtry">
-     <h3>Stav</h3>${chipy('stav', Object.entries(STAV_O).map(([k, v]) => [k, v[0]]), F.stav)}
-     <h3>Kde může pracovat</h3>${chipy('kraje', krajeVolby, F.kraje)}
-     <select data-f="okres"><option value="">– okresní město –</option>${okresy.map((o) => `<option value="${o.kod}"${F.okres === o.kod ? ' selected' : ''}>${esc(o.mesto)}</option>`).join('')}</select>
-     <h3>Zájem a kontakt</h3>${chipy('zajem', Object.entries(ZAJEM), F.zajem)}${chipy('kanal', Object.entries(KANAL), F.kanal)}
-     <h3>Profil</h3>
-     <div class="od-do">Výška <input data-f="vyskaOd" type="number" placeholder="od" value="${esc(F.vyskaOd)}"> – <input data-f="vyskaDo" type="number" placeholder="do" value="${esc(F.vyskaDo)}"> cm</div>
-     ${chipy('konfekce', KONFEKCE.map((k) => [k, k]), F.konfekce)}
-     <input data-f="jazyk" placeholder="Jazyk, např. němčina" value="${esc(F.jazyk)}">
-     <label class="chk"><input type="checkbox" data-f="ridicak"${F.ridicak ? ' checked' : ''}> řidičák</label><label class="chk"><input type="checkbox" data-f="auto"${F.auto ? ' checked' : ''}> vlastní auto</label>
-     <h3>Podklady</h3>${tri('profil', 'Profil')}${tri('udaje', 'Údaje pro smlouvu')}${tri('dpp', 'DPP podepsaná')}
-     <div class="od-do">Věk <input data-f="vekOd" type="number" placeholder="od" value="${esc(F.vekOd)}"> – <input data-f="vekDo" type="number" placeholder="do" value="${esc(F.vekDo)}"></div>
-     <div class="od-do">Registrace od <input data-f="regOd" type="date" value="${esc(F.regOd)}"></div>
-     <button class="btn o mini" id="vymazat">Vymazat filtry</button>
-    </aside>
-    <section class="vysledky"><div id="hromadne" class="hromadne hidden"></div><div id="tabulka"></div></section>
-   </div><div id="detail" class="detail hidden"></div>`;
+   <div class="lide-hlava"><h1>Lidé</h1><span id="pocet" class="mute"></span><span id="shrnuti" class="shrnuti"></span><button class="btn o mini" id="vymazat">Vymazat filtry</button>
+    <span class="pozn">Filtry jsou v řádku pod názvy sloupců. Najetím na fotku se zvětší, kliknutím na řádek otevřete detail.</span></div>${hlaska}
+   <div id="hromadne" class="hromadne hidden"></div>
+   <div class="tab-obal"><table class="lide-tab"><thead>
+    <tr><th class="vyb-sl"><input type="checkbox" id="vse" title="Vybrat vše podle filtru"></th>${th('foto', 'Foto')}${th('jmeno', 'Jméno')}${th('stav', 'Stav')}${th('', 'Telefon')}${th('', 'Kraje')}${th('', 'Zájem')}${th('vyska', 'Výška')}${th('', 'Jazyky')}${th('vek', 'Věk')}${th('profil', 'Profil')}${th('udaje', 'Údaje')}${th('dpp', 'DPP')}${th('', 'ČSSZ')}${th('reg', 'Registrace')}</tr>
+    <tr class="filtry-radek">
+     <td></td>
+     <td><select data-f="foto"><option value="">vše</option><option value="ano"${F.foto === 'ano' ? ' selected' : ''}>s fotkou</option><option value="ne"${F.foto === 'ne' ? ' selected' : ''}>bez</option></select></td>
+     <td><input data-f="text" type="search" placeholder="jméno, e-mail, obec" value="${esc(F.text)}"></td>
+     <td>${vf('stav', 'Stav', Object.entries(STAV_O).map(([k, v]) => [k, v[0]]))}</td>
+     <td><input data-f="tel" type="search" inputmode="numeric" placeholder="část čísla" value="${esc(F.tel)}">${vf('kanal', 'Kontakt přes', Object.entries(KANAL))}</td>
+     <td>${vf('kraje', 'Kraje', krajeVolby, `<b>Okresní město</b><select data-f="okres"><option value="">– všechna –</option>${okresy.map((o) => `<option value="${o.kod}"${F.okres === o.kod ? ' selected' : ''}>${esc(o.mesto)}</option>`).join('')}</select>`)}</td>
+     <td>${vf('zajem', 'Zájem', Object.entries(ZAJEM))}</td>
+     <td><div class="od-do"><input data-f="vyskaOd" type="number" placeholder="od" value="${esc(F.vyskaOd)}"><input data-f="vyskaDo" type="number" placeholder="do" value="${esc(F.vyskaDo)}"></div>${vf('konfekce', 'Konfekce', KONFEKCE.map((k) => [k, k]))}</td>
+     <td><input data-f="jazyk" type="search" placeholder="jazyk" value="${esc(F.jazyk)}"><details class="vf" data-vf="jazykx"><summary></summary><div class="vf-panel"><b>Doprava</b>
+       <label><input type="checkbox" data-f="ridicak"${F.ridicak ? ' checked' : ''}> řidičák</label><label><input type="checkbox" data-f="auto"${F.auto ? ' checked' : ''}> vlastní auto</label></div></details></td>
+     <td><div class="od-do"><input data-f="vekOd" type="number" placeholder="od" value="${esc(F.vekOd)}"><input data-f="vekDo" type="number" placeholder="do" value="${esc(F.vekDo)}"></div></td>
+     ${['profil', 'udaje', 'dpp'].map((k) => `<td><select data-f="${k}" class="mini-sel"><option value="">vše</option><option value="ano"${F[k] === 'ano' ? ' selected' : ''}>●&nbsp;má</option><option value="ne"${F[k] === 'ne' ? ' selected' : ''}>○&nbsp;chybí</option></select></td>`).join('')}<td></td>
+     <td><input data-f="regOd" type="date" title="Registrace od" value="${esc(F.regOd)}"></td>
+    </tr></thead><tbody id="telo"></tbody></table></div>
+   <div id="strany"></div>
+   <p class="pozn"><span class="tecka ok">●</span> hotovo · <span class="tecka wa">●</span> čeká (např. smlouva na podpis) · <span class="tecka no">●</span> chybí · <span class="tecka">●</span> připravujeme (ČSSZ, hodiny za rok).</p>
+   <div id="foto-velka" class="foto-velka hidden"><img alt=""></div>
+   <div id="detail" class="detail hidden"></div>`;
   zapniMenu();
-  const prekresli = () => { ulozF(); STRANA = 0; vykresliTabulku(); };
-  document.getElementById('hledat').oninput = (e) => { F.text = e.target.value; prekresli(); };
-  document.getElementById('filtry-prepni').onclick = () => document.getElementById('filtry').classList.toggle('otevreno');
   document.getElementById('vymazat').onclick = () => { F = F0(); ulozF(); vLide(); };
-  $app.querySelectorAll('#filtry [data-f]').forEach((el) => (el.onchange = el.oninput = () => {
+  $app.querySelectorAll('thead th.raz').forEach((t) => (t.onclick = () => { RAZENI = { k: t.dataset.k, smer: RAZENI.k === t.dataset.k ? -RAZENI.smer : 1 }; vykresliTabulku(); }));
+  $app.querySelectorAll('thead [data-f]').forEach((el) => (el.oninput = el.onchange = () => {
     const k = el.dataset.f;
-    if (el.type === 'checkbox' && Array.isArray(F[k])) F[k] = [...$app.querySelectorAll(`#filtry input[data-f="${k}"]:checked`)].map((x) => x.value);
+    const pred = JSON.stringify(F[k]);
+    if (el.type === 'checkbox' && Array.isArray(F[k])) F[k] = [...$app.querySelectorAll(`thead input[data-f="${k}"]:checked`)].map((x) => x.value);
     else if (el.type === 'checkbox') F[k] = el.checked; else F[k] = el.value;
-    if (k === 'kraje') { F.okres = ''; ulozF(); return vLide(); }
-    prekresli();
+    if (JSON.stringify(F[k]) === pred) return;   // „change“ po opuštění pole bez změny nepřekresluje (jinak by se ztratilo kliknutí)
+    ulozF(); STRANA = 0; popiskyFiltru(); vykresliTabulku();
   }));
-  vykresliTabulku();
+  document.addEventListener('click', (e) => { if (!e.target.closest('details.vf')) $app.querySelectorAll('details.vf[open]').forEach((d) => d.removeAttribute('open')); }, { once: false });
+  const v = document.getElementById('vse');
+  v.onchange = () => { filtruj().forEach((o) => (v.checked ? S.vyber.add(o.id) : S.vyber.delete(o.id))); vykresliTabulku(); };
+  popiskyFiltru(); vykresliTabulku();
 }
 
 function vykresliTabulku() {
@@ -367,40 +429,50 @@ function vykresliTabulku() {
   STRANA = Math.min(STRANA, stran - 1);
   const list = vse.slice(STRANA * NA_STRANU, (STRANA + 1) * NA_STRANU);
   document.getElementById('pocet').textContent = `${vse.length} z ${S.lide.length}`;
-  const sloupec = (k, t) => `<th data-k="${k}" class="raz${RAZENI.k === k ? ' on' : ''}">${t}${RAZENI.k === k ? (RAZENI.smer > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+  const shrn = [F.text && `„${F.text}“`, F.stav.length && F.stav.map((k) => STAV_O[k][0]).join('+'), F.kraje.length && F.kraje.map((k) => S.cis.kraj[k]).join(', '), F.okres && S.cis.okres[F.okres]?.mesto,
+    F.zajem.length && F.zajem.map((k) => ZAJEM[k]).join('+'), (F.vyskaOd || F.vyskaDo) && `výška ${F.vyskaOd || '…'}–${F.vyskaDo || '…'}`, F.jazyk, F.foto && (F.foto === 'ano' ? 's fotkou' : 'bez fotky'),
+    F.profil && `profil ${F.profil === 'ano' ? 'má' : 'chybí'}`, F.udaje && `údaje ${F.udaje === 'ano' ? 'má' : 'chybí'}`, F.dpp && `DPP ${F.dpp === 'ano' ? 'má' : 'chybí'}`].filter(Boolean);
+  document.getElementById('shrnuti').textContent = shrn.length ? 'filtr: ' + shrn.join(' · ') : 'bez filtru';
+  $app.querySelectorAll('thead th.raz').forEach((t) => { t.classList.toggle('on', RAZENI.k === t.dataset.k); t.querySelector('i').textContent = RAZENI.k === t.dataset.k ? (RAZENI.smer > 0 ? ' ▲' : ' ▼') : ''; });
+  const tecka = (c, t) => `<span class="tecka ${c}" title="${t}: ${c === 'ok' ? 'hotovo' : c === 'wa' ? 'čeká' : c === 'no' ? 'chybí' : '–'}">●</span>`;
   const zn = (ok, t, title) => `<span class="zn ${ok ? 'ok' : ''}" title="${title}: ${ok ? 'ano' : 'ne'}">${t}</span>`;
   const radek = (o) => {
     const p = o.profil || {}, kr = krajeOsoby(o).map((k) => S.cis.kraj[k] || k);
     return `<tr data-id="${o.id}"${S.vyber.has(o.id) ? ' class="vybran"' : ''}>
      <td><input type="checkbox" class="vyb" ${S.vyber.has(o.id) ? 'checked' : ''}></td>
+     <td>${nahled(o)}</td>
      <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b><small>${esc(o.obec || '')}</small></td>
      <td><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span></td>
-     <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a></td>
+     <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a><small>${esc((o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '))}</small></td>
      <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}<small>${o.okresy.length} měst</small></td>
      <td>${esc((o.zajem || []).map((z) => ZAJEM[z] || z).join(', '))}</td>
      <td class="nw">${p.vyska_cm ? p.vyska_cm + ' cm' : '–'}<small>${esc(p.konfekce || '')}${p.bota_eu ? ' · ' + p.bota_eu : ''}</small></td>
      <td>${esc((p.jazyky || []).join(', ')) || '–'}<small>${p.ridicak ? 'řidičák' : ''}${p.vlastni_auto ? ' · auto' : ''}</small></td>
      <td>${o.vek ?? '–'}</td>
-     <td class="podklady">${zn(o.ma_profil, 'P', 'Profil')}${zn(o.udaje, 'Ú', 'Údaje pro smlouvu')}${zn(o.dpp === 'podepsano', 'D', 'DPP podepsaná')}</td>
+     <td class="tecka">${tecka(o.ma_profil ? 'ok' : 'no', 'Profil')}</td><td class="tecka">${tecka(o.udaje ? 'ok' : 'no', 'Údaje pro smlouvu')}</td>
+     <td class="tecka">${tecka(o.dpp === 'podepsano' ? 'ok' : o.dpp === 'k_podpisu' ? 'wa' : 'no', o.dpp === 'k_podpisu' ? 'DPP čeká na podpis' : 'DPP')}</td><td class="tecka">${tecka('', 'ČSSZ – připravujeme')}</td>
      <td>${datum(o.vytvoreno)}</td></tr>`;
   };
-  document.getElementById('tabulka').innerHTML = list.length ? `<div class="tab-obal"><table class="lide-tab"><thead><tr><th><input type="checkbox" id="vse" title="Vybrat vše podle filtru"></th>
-     ${sloupec('jmeno', 'Jméno')}${sloupec('stav', 'Stav')}<th>Telefon</th><th>Kraje</th><th>Zájem</th>${sloupec('vyska', 'Výška')}<th>Jazyky</th>${sloupec('vek', 'Věk')}${sloupec('podklady', 'Podklady')}${sloupec('reg', 'Registrace')}</tr></thead>
-     <tbody>${list.map(radek).join('')}</tbody></table></div>
-     ${stran > 1 ? `<div class="strany"><button class="btn o mini" id="pred"${STRANA ? '' : ' disabled'}>←</button> strana ${STRANA + 1} z ${stran} <button class="btn o mini" id="dal"${STRANA < stran - 1 ? '' : ' disabled'}>→</button></div>` : ''}
-     <p class="pozn">P = profil, Ú = údaje pro smlouvu, D = podepsaná DPP. Klikněte na řádek pro detail.</p>`
-    : `<p class="mute">Filtru nikdo neodpovídá.</p>`;
-  const t = document.getElementById('tabulka');
-  t.querySelectorAll('th.raz').forEach((th) => (th.onclick = () => { RAZENI = { k: th.dataset.k, smer: RAZENI.k === th.dataset.k ? -RAZENI.smer : 1 }; vykresliTabulku(); }));
-  t.querySelectorAll('tbody tr').forEach((tr) => (tr.onclick = (e) => {
+  const telo = document.getElementById('telo');
+  telo.innerHTML = list.length ? list.map(radek).join('') : `<tr><td colspan="15" class="prazdno">Filtru nikdo neodpovídá.</td></tr>`;
+  document.getElementById('strany').innerHTML = stran > 1 ? `<div class="strany"><button class="btn o mini" id="pred"${STRANA ? '' : ' disabled'}>←</button> strana ${STRANA + 1} z ${stran} <button class="btn o mini" id="dal"${STRANA < stran - 1 ? '' : ' disabled'}>→</button></div>` : '';
+  telo.querySelectorAll('tr[data-id]').forEach((tr) => (tr.onclick = (e) => {
     if (e.target.closest('a')) return;
-    if (e.target.classList.contains('vyb')) { e.target.checked ? S.vyber.add(tr.dataset.id) : S.vyber.delete(tr.dataset.id); tr.classList.toggle('vybran', e.target.checked); return hromadne(vse); }
+    if (e.target.classList.contains('vyb')) { e.target.checked ? S.vyber.add(tr.dataset.id) : S.vyber.delete(tr.dataset.id); tr.classList.toggle('vybran', e.target.checked); return hromadne(); }
     vDetailOsoby(tr.dataset.id);
   }));
-  const v = document.getElementById('vse'); if (v) { v.checked = vse.length && vse.every((o) => S.vyber.has(o.id)); v.onchange = () => { vse.forEach((o) => (v.checked ? S.vyber.add(o.id) : S.vyber.delete(o.id))); vykresliTabulku(); }; }
+  const v = document.getElementById('vse'); v.checked = vse.length > 0 && vse.every((o) => S.vyber.has(o.id));
   const pr = document.getElementById('pred'), da = document.getElementById('dal');
   if (pr) pr.onclick = () => { STRANA--; vykresliTabulku(); }; if (da) da.onclick = () => { STRANA++; vykresliTabulku(); };
-  hromadne(vse);
+  hromadne();
+  // fotky: podepsat jen viditelné a zapnout zvětšení při najetí
+  podepisFotky(list.flatMap((o) => o.fotky.slice(0, 1))).then(() => telo.querySelectorAll('.foto[data-cesta] img').forEach((img) => { const u = S.fotoUrl[img.parentElement.dataset.cesta]; if (u && img.src !== u) img.src = u; }));
+  const velka = document.getElementById('foto-velka');
+  telo.querySelectorAll('.foto[data-cesta]').forEach((f) => {
+    f.onmouseenter = (e) => { const u = S.fotoUrl[f.dataset.cesta]; if (!u) return; velka.querySelector('img').src = u; velka.classList.remove('hidden'); posunNahled(e); };
+    f.onmousemove = posunNahled; f.onmouseleave = () => velka.classList.add('hidden');
+  });
+  function posunNahled(e) { const w = 260, h = 340; velka.style.left = Math.min(e.clientX + 18, innerWidth - w - 10) + 'px'; velka.style.top = Math.max(10, Math.min(e.clientY - h / 2, innerHeight - h - 10)) + 'px'; }
 }
 
 function hromadne() {
@@ -449,6 +521,7 @@ async function vDetailOsoby(id) {
   const p = o.profil || {}, tel = o.telefon.replace(/\D/g, '');
   const mistaPodleKraju = mistaText(o.okresy);
   d.innerHTML = `<div class="det-hl"><div><h2>${esc(o.jmeno)} ${esc(o.prijmeni)}</h2><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span> <span class="mute">registrace ${datum(o.vytvoreno)}</span></div><button class="zavrit" title="Zavřít">✕</button></div>
+   <div class="det-fotky" id="det-fotky">${o.fotky.length ? o.fotky.map((c) => `<img data-cesta="${esc(c)}" alt="">`).join('') : `<span class="foto bez velka">${inicialy(o)}</span><span class="mute">Bez fotky – hosteska ji může nahrát v profilu.</span>`}</div>
    <div class="det-akce"><a class="btn o mini" href="tel:${esc(o.telefon)}">📞 Zavolat</a><a class="btn o mini" href="mailto:${esc(o.email)}">✉ E-mail</a><a class="btn o mini" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a></div>
    <section><h3>Kontakt a registrace</h3><dl>
     <dt>Telefon</dt><dd>${esc(o.telefon)}</dd><dt>E-mail</dt><dd>${esc(o.email)}</dd><dt>Bydliště</dt><dd>${esc(o.obec || '')}</dd>
@@ -465,6 +538,7 @@ async function vDetailOsoby(id) {
     <button class="btn" type="submit">Uložit</button></form></section>
    ${S.vedeni || S.tbdb ? '<section><h3>Historie změn</h3><div id="det-hist" class="mute">Načítám…</div></section>' : ''}`;
   d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
+  podepisFotky(o.fotky).then(() => d.querySelectorAll('#det-fotky img').forEach((img) => (img.src = S.fotoUrl[img.dataset.cesta] || '')));
   d.querySelector('#det-f').onsubmit = async (e) => {
     e.preventDefault();
     const stav = d.querySelector('#det-stav').value, pozn = d.querySelector('#det-pozn').value.trim();

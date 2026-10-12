@@ -25,7 +25,7 @@ const rcVyrob = (d, zena) => { const b = String(d.getFullYear() % 100).padStart(
 const ucetVyrob = () => { const w = [6, 3, 7, 9, 10, 5, 8, 4, 2, 1]; for (;;) { const d = Array.from({ length: 10 }, (_, i) => (i < 2 ? 0 : nah(10))); d[2] = 1 + nah(9); if (d.reduce((a, v, i) => a + v * w[i], 0) % 11 === 0) return d.join('').replace(/^0+/, ''); } };
 const iso = (d) => d.toISOString();
 const DEN = 86400000, TED = Date.now();
-const db = { osoba: [], okres: {}, profil: {}, nastup: {}, dok: {}, pozn: {}, hist: [], tiket: [], zprava: [] };
+const db = { foto: {}, osoba: [], okres: {}, profil: {}, nastup: {}, dok: {}, pozn: {}, hist: [], tiket: [], zprava: [] };
 const stavy = [...Array(12).fill('uchazec'), ...Array(70).fill('aktivni'), ...Array(20).fill('prijata'), ...Array(10).fill('neaktivni')];
 stavy.forEach((stav, i) => {
   const muz = nah(100) < 13, jm = muz ? vyber(MJ) : vyber(ZJ), pr = muz ? vyber(MP) : vyber(ZP), m = vyber(MESTA);
@@ -36,6 +36,7 @@ stavy.forEach((stav, i) => {
     stav, souhlas_gdpr_v: '2026-dev', souhlas_gdpr_at: iso(vytv), vytvoreno: iso(vytv), zmeneno: iso(vytv) });
   const ok = CIS.okres.filter((o) => (o.kraj_kod === kraj && (nah(10) < 6 || o.kod === m[2])) || (o.kraj_kod === (SOUSED[kraj] || 'praha') && nah(10) < 3)).map((o) => o.kod);
   db.okres[id] = ok.length ? ok : [m[2]];
+  db.foto[id] = nah(100) < 82 ? Array.from({ length: 1 + nah(3) }, (_, k) => `demo/${id}-${k + 1}-${muz ? 'm' : 'z'}.jpg`) : [];
   if (stav === 'uchazec') return;
   if (nah(100) < 15) db.pozn[id] = vyber(POZN);
   if (nah(100) > 85) return;
@@ -51,6 +52,21 @@ stavy.forEach((stav, i) => {
   else if (r < 90) db.dok[id] = [{ id: 'dd-' + i, stav: 'k_podpisu', vytvoreno: iso(new Date(TED - 2 * DEN)), podepsano_at: null, podpis: null, dokument_sablona: { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' } }];
 });
 db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro Tbdb', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
+
+// ilustrační „fotky“ (vymyšlené postavy, žádné skutečné osoby) – SVG podle cesty
+window.VIXEN_DEMO_FOTO = (cesta) => {
+  let h = 0; for (const c of cesta) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const pozadi = ['#e9dcc4', '#d9e4ea', '#e7d6dc', '#dde6d5', '#e4dfee', '#f0e2cf'][h % 6], kuze = ['#f1c9a5', '#e0ac85', '#c98e66', '#f5d6bd'][(h >>> 3) % 4];
+  const vlasy = ['#3b2a1e', '#6b4a2b', '#b07a3b', '#d9b26a', '#1f1a17', '#8a3b25'][(h >>> 5) % 6], obleceni = ['#23201b', '#ac9455', '#2f6f8f', '#7b2d42', '#3d7a4f'][(h >>> 7) % 5];
+  const muz = cesta.includes('-m.'), dlouhe = !muz && (h >>> 9) % 3 !== 0;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 156"><rect width="120" height="156" fill="${pozadi}"/>
+    ${dlouhe ? `<path d="M30 70 Q28 30 60 26 Q92 30 90 70 L94 118 L26 118 Z" fill="${vlasy}"/>` : ''}
+    <path d="M18 156 Q20 112 60 108 Q100 112 102 156 Z" fill="${obleceni}"/><rect x="51" y="86" width="18" height="24" rx="6" fill="${kuze}"/>
+    <ellipse cx="60" cy="66" rx="24" ry="28" fill="${kuze}"/>
+    <path d="M35 62 Q36 36 60 35 Q85 36 85 62 Q78 46 60 46 Q43 46 35 62 Z" fill="${vlasy}"/>
+    <circle cx="51" cy="68" r="2.4" fill="#3a2b22"/><circle cx="69" cy="68" r="2.4" fill="#3a2b22"/><path d="M53 80 Q60 85 67 80" stroke="#9a5a45" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+};
 // ---------- napodobené Supabase ----------
 const USER = { id: 'demo-user', email: 'ukazka@example.cz', aud: 'authenticated', role: 'authenticated', user_metadata: { jmeno: 'Ukázka' }, app_metadata: { provider: 'email' } };
 const KLIC = 'vixen-demo-auth';
@@ -60,7 +76,7 @@ window.VIXEN_DEMO_AUTH = { storageKey: KLIC, storage: window.sessionStorage, aut
 const odpoved = (d, status = 200, h = {}) => new Response(d === undefined || status === 204 ? null : JSON.stringify(d), { status, headers: { 'content-type': 'application/json', ...h } });
 const hodnota = (q, k) => { const v = q.get(k); return v == null ? null : v.replace(/^(eq|in)\./, '').replace(/^\(|\)$/g, ''); };
 const zaznamZmeny = (id, pred) => db.hist.unshift({ tabulka: 'osoba', zaznam_id: id, akce: 'UPDATE', kdy: new Date().toISOString(), pred });
-const osobaPlna = (o) => ({ ...o, osoba_okres: db.okres[o.id].map((okres_kod) => ({ okres_kod })), osoba_profil: db.profil[o.id] || null, osoba_poznamka: db.pozn[o.id] ? { text: db.pozn[o.id] } : null });
+const osobaPlna = (o) => ({ ...o, osoba_foto: (db.foto[o.id] || []).map((cesta, i) => ({ cesta, poradi: i + 1 })), osoba_okres: db.okres[o.id].map((okres_kod) => ({ okres_kod })), osoba_profil: db.profil[o.id] || null, osoba_poznamka: db.pozn[o.id] ? { text: db.pozn[o.id] } : null });
 const puvodniFetch = window.fetch.bind(window);
 window.fetch = async (vstup, init = {}) => {
   const url = new URL(typeof vstup === 'string' ? vstup : vstup.url);
