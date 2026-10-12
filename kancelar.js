@@ -66,7 +66,7 @@ async function poPrihlaseni() {
   S.jmeno = (user.user_metadata && user.user_metadata.jmeno) || user.email.split('@')[0];
   if (S.tbdb) S.jmeno += ' (Tbdb)';
   document.getElementById('kdo').textContent = S.jmeno;
-  vUvod();
+  S.nabor ? vLide() : vUvod();   // úvodní obrazovka kanceláře = Lidé
 }
 
 async function nactiTikety() {
