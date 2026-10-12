@@ -14,6 +14,18 @@ const opt = (list, val, prazdna) => (prazdna !== undefined ? `<option value="">$
   list.map((x) => `<option value="${esc(x.kod)}"${x.kod === val ? ' selected' : ''}>${esc(x.nazev)}${x.kod.length === 4 ? ' (' + x.kod + ')' : ''}</option>`).join('');
 const msg = (t, typ = 'ok') => `<div class="msg ${typ}">${t}</div>`;
 
+// chyba formuláře: jedno pole hlášky přímo nad tlačítkem odeslání, vždy na obrazovce
+function chybaFormu(form, text) {
+  let box = form.querySelector('.form-chyba');
+  if (!box) {
+    box = document.createElement('div'); box.className = 'form-chyba'; box.setAttribute('role', 'alert');
+    const tl = [...form.querySelectorAll('button[type=submit], button:not([type])')].pop();
+    if (tl) tl.before(box); else form.append(box);
+  }
+  box.innerHTML = msg(esc(text), 'bad');
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 // srozumitelné chyby z databáze
 function chybaText(e) {
   const m = (e && (e.message || e.error_description || e.chyba)) || String(e);
@@ -165,7 +177,13 @@ function vRegistrace() {
     const { error } = await sb.rpc('registrace', { p: {
       jmeno: val('jmeno'), prijmeni: val('prijmeni'), telefon: K.telefonNormalizuj(val('telefon')), email: val('email').toLowerCase(),
       okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze } });
-    if (error) { b.disabled = false; b.textContent = 'Odeslat registraci'; e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(error)), 'bad')); return; }
+    if (error) {
+      b.disabled = false; b.textContent = 'Odeslat registraci';
+      if (/evidujeme|duplicit/i.test(error.message || '')) for (const id of ['email', 'telefon']) {
+        const f = document.querySelector(`.fld[data-f="${id}"]`); if (f) { f.classList.add('chyba'); f.querySelector('.err').textContent = 'Už evidujeme – zkontrolujte nebo se nám ozvěte.'; }
+      }
+      chybaFormu(e.target, chybaText(error)); return;
+    }
     $app.innerHTML = `<h1>Děkujeme!</h1>${msg('Registrace dorazila ✓')}<p>Ozveme se vám. Jakmile vás schválíme, přihlásíte se e-mailem <b>${esc(val('email') || '')}</b> a doplníte profil.</p>
       <button class="btn o" id="pp">Přihlásit</button>`;
     document.getElementById('pp').onclick = vPrihlaseni;
@@ -187,7 +205,7 @@ function vPrihlaseni() {
     const email = val('email').toLowerCase();
     if (DEV && val('heslo')) {
       const { error } = await sb.auth.signInWithPassword({ email, password: val('heslo') });
-      if (error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(error)), 'bad'));
+      if (error) return chybaFormu(e.target, chybaText(error));
       return poPrihlaseni();
     }
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href.split('#')[0] } });
@@ -275,11 +293,11 @@ function vProfil() {
       osoba_id: S.osoba.id, vyska_cm: val('vyska') || null, bota_eu: val('bota') || null, konfekce: val('konfekce') || null,
       jazyky: val('jazyky') ? val('jazyky').split(',').map((x) => x.trim()).filter(Boolean) : [],
       zkusenosti: val('zkusenosti') || null, ridicak: val('ridicak'), vlastni_auto: val('auto'), dostupnost: val('dostupnost') || null });
-    if (error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(error)), 'bad'));
+    if (error) return chybaFormu(e.target, chybaText(error));
     const nove = oblastVyber(), stare = S.okresy;
     const pryc = stare.filter((k) => !nove.includes(k)), pribyla = nove.filter((k) => !stare.includes(k));
-    if (pribyla.length) { const r = await sb.from('osoba_okres').insert(pribyla.map((k) => ({ osoba_id: S.osoba.id, okres_kod: k }))); if (r.error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(r.error)), 'bad')); }
-    if (pryc.length) { const r = await sb.from('osoba_okres').delete().eq('osoba_id', S.osoba.id).in('okres_kod', pryc); if (r.error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chybaText(r.error)), 'bad')); }
+    if (pribyla.length) { const r = await sb.from('osoba_okres').insert(pribyla.map((k) => ({ osoba_id: S.osoba.id, okres_kod: k }))); if (r.error) return chybaFormu(e.target, chybaText(r.error)); }
+    if (pryc.length) { const r = await sb.from('osoba_okres').delete().eq('osoba_id', S.osoba.id).in('okres_kod', pryc); if (r.error) return chybaFormu(e.target, chybaText(r.error)); }
     await nacti(); ukaz('prehled');
   };
 }

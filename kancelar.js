@@ -13,6 +13,18 @@ if (C.prostredi) document.getElementById('env').textContent = C.prostredi + ' �
 else document.getElementById('env').classList.add('hidden');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const msg = (t, typ = 'ok') => `<div class="msg ${typ}">${t}</div>`;
+
+// chyba formuláře: jedno pole hlášky přímo nad tlačítkem odeslání, vždy na obrazovce
+function chybaFormu(form, text) {
+  let box = form.querySelector('.form-chyba');
+  if (!box) {
+    box = document.createElement('div'); box.className = 'form-chyba'; box.setAttribute('role', 'alert');
+    const tl = [...form.querySelectorAll('button[type=submit], button:not([type])')].pop();
+    if (tl) tl.before(box); else form.append(box);
+  }
+  box.innerHTML = msg(esc(text), 'bad');
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 const kdy = (d) => new Date(d).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 const chyba = (e) => (e && (e.message || e.error_description)) || String(e);
 document.getElementById('odhlasit').onclick = async () => { await sb.auth.signOut(); location.reload(); };
@@ -37,7 +49,7 @@ function vPrihlaseni() {
     const heslo = DEV && document.getElementById('heslo').value;
     const { error } = heslo ? await sb.auth.signInWithPassword({ email, password: heslo })
       : await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.href.split('#')[0] } });
-    if (error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chyba(error)), 'bad'));
+    if (error) return chybaFormu(e.target, chyba(error));
     if (heslo) return poPrihlaseni();
     $app.innerHTML = `<h1>Mrkněte do e-mailu</h1>${msg('Poslali jsme odkaz na ' + esc(email) + '.')}`;
   };
@@ -150,7 +162,7 @@ async function odeslat(e) {
     vUvod(msg(`Dotaz #${data.cislo} jsme přijali ✓ Odpovíme co nejdřív.`));
   } catch (err) {
     b.disabled = false; b.textContent = 'Odeslat dotaz';
-    e.target.insertAdjacentHTML('afterbegin', msg('Odeslání se nepovedlo: ' + esc(chyba(err)), 'bad'));
+    chybaFormu(e.target, 'Odeslání se nepovedlo: ' + chyba(err));
   }
 }
 
@@ -183,8 +195,8 @@ async function vDetail(id) {
     const text = document.getElementById('text').value.trim();
     const novyStav = S.tbdb ? document.getElementById('stav').value : t.stav;
     if (!text && novyStav === t.stav) { const f = document.querySelector('[data-f=text]'); f.classList.add('chyba'); f.querySelector('.err').textContent = 'Napište odpověď.'; return; }
-    if (text) { const { error } = await sb.from('tiket_zprava').insert({ tiket_id: id, autor_jmeno: S.jmeno, text }); if (error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chyba(error)), 'bad')); }
-    if (S.tbdb && novyStav !== t.stav) { const { error } = await sb.from('tiket').update({ stav: novyStav }).eq('id', id); if (error) return e.target.insertAdjacentHTML('afterbegin', msg(esc(chyba(error)), 'bad')); }
+    if (text) { const { error } = await sb.from('tiket_zprava').insert({ tiket_id: id, autor_jmeno: S.jmeno, text }); if (error) return chybaFormu(e.target, chyba(error)); }
+    if (S.tbdb && novyStav !== t.stav) { const { error } = await sb.from('tiket').update({ stav: novyStav }).eq('id', id); if (error) return chybaFormu(e.target, chyba(error)); }
     await nactiTikety(); vDetail(id);
   };
 }
