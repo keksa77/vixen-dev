@@ -30,6 +30,46 @@ main{max-width:760px}
 .akce{display:flex;gap:8px;flex-wrap:wrap}.akce .btn{width:auto;flex:1 1 140px}
 .no{color:var(--bad);font-weight:600}
 .filtr{margin-bottom:6px}
+
+body.siroka main{max-width:1440px}
+.btn.mini{display:inline-block;width:auto;padding:6px 12px;font-size:13.5px;margin:0;font-weight:600;border-radius:9px;text-decoration:none}
+.lide-hlava{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.lide-hlava h1{margin:0}
+.lide-hlava input[type=search]{flex:1 1 280px;max-width:460px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font:inherit}
+#filtry-prepni{display:none}
+.lide{display:grid;grid-template-columns:270px 1fr;gap:16px;align-items:start}
+.filtry{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;position:sticky;top:60px;max-height:calc(100vh - 80px);overflow:auto;font-size:14px}
+.filtry h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:14px 0 6px}.filtry h3:first-child{margin-top:0}
+.filtry select,.filtry input:not([type=checkbox]){width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:14px;margin:4px 0}
+.filtry .od-do{display:flex;align-items:center;gap:6px;margin:6px 0}.filtry .od-do input{width:72px!important}
+.filtry .chk{display:inline-flex;margin-right:12px;font-size:14px}
+.chips.mini{gap:4px}.chips.mini label{font-size:12.5px;padding:3px 9px}
+.tri{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0}.tri select{width:auto!important}
+.vysledky{min-width:0}
+.tab-obal{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+.lide-tab{width:100%;border-collapse:collapse;font-size:14px}
+.lide-tab th{text-align:left;font-size:12px;color:var(--mute);font-weight:600;padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap;background:#faf7f1;position:sticky;top:0}
+.lide-tab th.raz{cursor:pointer}.lide-tab th.raz.on{color:var(--ink)}
+.lide-tab td{padding:8px;border-bottom:1px solid #f0ebe1;vertical-align:top}
+.lide-tab td small{display:block;color:var(--mute);font-size:12px}
+.lide-tab tbody tr{cursor:pointer}.lide-tab tbody tr:hover{background:#fbf8f2}.lide-tab tr.vybran{background:var(--gold-s)}
+.lide-tab .tel{color:var(--ink);white-space:nowrap}
+.zn{display:inline-flex;width:22px;height:22px;border-radius:6px;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;background:#eee8dc;color:#a59c8b;margin-right:3px}
+.zn.ok{background:var(--ok);color:#fff}
+.lide-tab td.podklady,.lide-tab td.nw{white-space:nowrap}
+.strany{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0}
+.hromadne{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--ink);color:#fff;border-radius:12px;padding:10px 12px;margin-bottom:10px;position:sticky;top:56px;z-index:4}
+.hromadne .btn.o{background:#fff}.hromadne select{padding:6px;border-radius:8px;font:inherit;font-size:13.5px}.hromadne .mute{color:#ddd}
+.potvrd-h{flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.potvrd-h .msg{margin:0}
+.detail{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:var(--bg);box-shadow:-10px 0 30px rgba(0,0,0,.18);z-index:20;overflow:auto;padding:16px 18px 40px}
+.det-hl{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.det-hl h2{margin:0 0 4px}
+.zavrit{border:0;background:#fff;border-radius:50%;width:36px;height:36px;font-size:17px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.det-akce{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.detail section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:10px 0}
+.detail h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:2px 0 8px}.detail h4{margin:12px 0 6px;font-size:14px}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:14.5px}.detail dt{color:var(--mute)}.detail dd{margin:0}
+.dok-r{display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px solid #f0ebe1;padding:6px 0}.dok-r small{display:block;color:var(--mute);font-size:12px}
+.hist{margin:0;padding-left:18px;font-size:13.5px;color:var(--ink)}
+@media(max-width:900px){.lide{grid-template-columns:1fr}.filtry{display:none;position:static;max-height:none}.filtry.otevreno{display:block}#filtry-prepni{display:inline-block}}
 </style>
 </head>
 <body>
