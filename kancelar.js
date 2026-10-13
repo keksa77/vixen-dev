@@ -237,6 +237,23 @@ const FILTR = { uchazec: ['Nové', ['uchazec']], prijate: ['Přijaté', ['prijat
 const STAV_O = { uchazec: ['nová', 't-w'], prijata: ['přijatá', 't-ok'], aktivni: ['aktivní', 't-ok'], neaktivni: ['neaktivní', 't-b'], odmitnuta: ['odmítnutá', 't-b'] };
 const ZAJEM = { hosteska: 'hosteska', promoter: 'promotér/ka', jine: 'jiné' };
 const KANAL = { email: 'e-mail', sms: 'SMS', whatsapp: 'WhatsApp', messenger: 'Messenger' };
+// důvod odmítnutí / vyřazení (povinný u stavu odmítnutá a neaktivní) – osoba_kancelar.duvod_vyrazeni
+const DUVOD = { nevyhovuje: 'nevyhovuje požadavkům', nespolehliva: 'nespolehlivá', nema_zajem: 'sama nemá zájem', nereaguje: 'nereaguje',
+  duplicita: 'duplicitní přihláška', pauza: 'pauza (studium, mateřská…)', bez_prace: 'dlouho bez práce', jine: 'jiný důvod (viz poznámka)' };
+const sDuvodem = (stav) => stav === 'odmitnuta' || stav === 'neaktivni';
+const duvodVolba = (vybrany = '') => `<select class="duvod"><option value="">– vyberte důvod –</option>${Object.entries(DUVOD).map(([k, v]) => `<option value="${k}"${k === vybrany ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+const neoslovovatZn = (o) => (o.neoslovovat ? ' <span class="tag t-r" title="Kancelář ji nemá oslovovat – hromadné akce ji vynechají">neoslovovat</span>' : '');
+// změna stavu (i hromadně) – u odmítnuté/neaktivní s důvodem; neoslovovat: true/false/undefined (= beze změny)
+const zmenStavDb = (ids, stav, duvod, neoslovovat) => sb.rpc('zmen_stav', { p_osoby: ids, p_stav: stav, p_duvod: sDuvodem(stav) ? duvod || null : null, p_neoslovovat: neoslovovat ?? null });
+// e-mail hostesce (schválení / připomínka) přes funkci hosteska-zprava; vrátí text výsledku
+const ZPRAVA_VYS = { odeslano: 'odesláno', vyvoj_neodeslano: 'VÝVOJ – neodesláno', vynechano: 'vynecháno', chyba: 'chyba' };
+async function posliZpravu(osoby, typ) {
+  const osloveni = Object.fromEntries(osoby.map((o) => [o.id, K.vokativ(o.jmeno)]));
+  const { data, error } = await sb.functions.invoke('hosteska-zprava', { body: { osoba_ids: osoby.map((o) => o.id), typ, osloveni } });
+  if (error || data?.chyba) return { ok: false, text: 'E-mail se nepodařilo poslat: ' + esc(data?.chyba || chyba(error)) };
+  if (osoby.length === 1) { const v = data.vysledky[0] || { vysledek: 'vynechano', zprava: '' }; return { ok: v.vysledek === 'odeslano', text: `E-mail: ${ZPRAVA_VYS[v.vysledek]}${v.zprava && v.vysledek !== 'odeslano' ? ' – ' + esc(v.zprava) : ''}.` }; }
+  return { ok: !data.chyby, text: `E-maily: odesláno ${data.odeslano}${data.vyvoj ? `, VÝVOJ – neodesláno ${data.vyvoj}` : ''}${data.vynechano ? `, vynecháno ${data.vynechano} (neoslovovat, nic nechybí nebo připomínka nedávno odešla)` : ''}${data.chyby ? `, chyby ${data.chyby}` : ''}.` };
+}
 async function ciselniky() {
   if (S.cis) return S.cis;
   const [{ data: kraj }, { data: okres }, { data: zp }] = await Promise.all([sb.from('kraj').select('kod,nazev'), sb.from('okres').select('kod,mesto,kraj_kod'), sb.from('zdravotni_pojistovna').select('kod,nazev')]);
@@ -250,11 +267,14 @@ function mistaText(kody) {
 }
 async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
   await ciselniky();
-  const { data, error } = await sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_poznamka(text), osoba_foto(cesta,poradi)').in('stav', FILTR[filtr][1]).order('vytvoreno', { ascending: filtr !== 'uchazec' ? false : true });
+  const { data, error } = await sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_poznamka(text), osoba_foto(cesta,poradi), osoba_kancelar(duvod_vyrazeni,neoslovovat)').in('stav', FILTR[filtr][1]).order('vytvoreno', { ascending: filtr !== 'uchazec' ? false : true });
   if (error) { $app.innerHTML = msg(esc(chyba(error)), 'bad'); return; }
-  for (const o of data || []) o.osoba_poznamka = Array.isArray(o.osoba_poznamka) ? o.osoba_poznamka[0] || null : o.osoba_poznamka;
+  for (const o of data || []) {
+    o.osoba_poznamka = Array.isArray(o.osoba_poznamka) ? o.osoba_poznamka[0] || null : o.osoba_poznamka;
+    const k = (Array.isArray(o.osoba_kancelar) ? o.osoba_kancelar[0] : o.osoba_kancelar) || {}; o.duvod = k.duvod_vyrazeni || ''; o.neoslovovat = !!k.neoslovovat;
+  }
   const karta = (o) => `<div class="card prihl" data-id="${o.id}">
-     <div class="prihl-hl"><b>${esc(o.jmeno)} ${esc(o.prijmeni)}</b><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span></div>
+     <div class="prihl-hl"><b>${esc(o.jmeno)} ${esc(o.prijmeni)}</b><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span>${neoslovovatZn(o)}</div>
      <small class="mute">Registrace ${kdy(o.vytvoreno)}</small>
      <div class="det-fotky">${(o.osoba_foto || []).length ? [...o.osoba_foto].sort((a, b) => a.poradi - b.poradi).map((f) => `<img data-cesta="${esc(f.cesta)}" alt="">`).join('') : '<span class="mute">Bez fotky</span>'}</div>
      <dl>
@@ -264,10 +284,12 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
       <dt>Může pracovat</dt><dd>${mistaText((o.osoba_okres || []).map((x) => x.okres_kod))}</dd>
       <dt>Zájem</dt><dd>${(o.zajem || []).map((z) => esc(ZAJEM[z] || z)).join(', ')}</dd>
       <dt>Kontakt přes</dt><dd>${(o.kanal_kontaktu || []).map((z) => esc(KANAL[z] || z)).join(', ')}</dd>
+      ${o.duvod ? `<dt>Důvod</dt><dd>${esc(DUVOD[o.duvod] || o.duvod)}</dd>` : ''}
       <dt>Souhlas</dt><dd>${o.souhlas_gdpr_at ? 'ano, ' + kdy(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd>
      </dl>
      <form class="rozh" novalidate>
       <div class="fld" data-f="pozn"><label>Interní poznámka (hosteska ji neuvidí)</label><textarea rows="2" name="pozn" placeholder="Nepovinné – např. odkud se o nás dozvěděla">${esc(o.osoba_poznamka?.text || '')}</textarea><div class="err"></div></div>
+      ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? `<label class="chk"><input type="checkbox" name="mail"${o.neoslovovat ? '' : ' checked'}> <span>Při schválení poslat hostesce e-mail (jak se přihlásit a co doplnit)</span></label>` : ''}
       <div class="akce">
        ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? '<button type="button" class="btn" data-a="prijata">Schválit</button>' : ''}
        ${o.stav !== 'odmitnuta' ? `<button type="button" class="btn o" data-a="odmitnuta">${o.stav === 'uchazec' ? 'Odmítnout' : 'Vyřadit'}</button>` : ''}
@@ -278,7 +300,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
   $app.innerHTML = `${await menu('prihlasky')}<h1>Přihlášky</h1>${hlaska}
     <div class="chips filtr">${Object.entries(FILTR).map(([k, v]) => `<label><input type="radio" name="filtr" value="${k}"${k === filtr ? ' checked' : ''}> ${v[0]}</label>`).join('')}</div>
     ${(data || []).map(karta).join('') || `<p class="mute">${filtr === 'uchazec' ? 'Žádné nové přihlášky.' : 'Nic tu není.'}</p>`}
-    <p class="pozn">Po schválení se hosteska může přihlásit e-mailem z registrace a doplnit profil a údaje pro smlouvu. E-mail o schválení zatím neposíláme (DOPLNIT po nastavení odesílání) – dejte jí prosím vědět.</p>`;
+    <p class="pozn">Po schválení se hosteska může přihlásit e-mailem z registrace a doplnit profil a údaje pro smlouvu. Pokud je zaškrtnuté, odejde jí při schválení e-mail (ve vývoji jen na adresy TBDB).</p>`;
   zapniMenu();
   podepisFotky((data || []).flatMap((o) => (o.osoba_foto || []).map((f) => f.cesta))).then(() => $app.querySelectorAll('.prihl img[data-cesta]').forEach((i) => (i.src = S.fotoUrl[i.dataset.cesta] || '')));
   $app.querySelectorAll('input[name=filtr]').forEach((r) => (r.onchange = () => vPrihlasky(r.value)));
@@ -290,24 +312,32 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
       if (novy === 'prijata') return zmenStav(o, novy, form);
       potvrd.classList.remove('hidden');
       potvrd.innerHTML = `${msg(novy === 'odmitnuta' ? `Opravdu ${o.stav === 'uchazec' ? 'odmítnout' : 'vyřadit'} ${esc(jmeno)}? Záznam zůstane v Odmítnutých, jde to vrátit.` : `Vrátit ${esc(jmeno)} mezi nové?`, 'warn')}
+        ${novy === 'odmitnuta' ? `<div class="fld" data-f="duvod"><label>Důvod</label>${duvodVolba(o.duvod)}<div class="err"></div></div>
+        <label class="chk"><input type="checkbox" class="neosl"${o.neoslovovat ? ' checked' : ''}> <span>Neoslovovat ani v budoucnu</span></label>` : ''}
         <div class="akce"><button type="button" class="btn" data-ok>Ano</button><button type="button" class="btn o" data-ne>Ne</button></div>`;
       potvrd.querySelector('[data-ne]').onclick = () => potvrd.classList.add('hidden');
-      potvrd.querySelector('[data-ok]').onclick = () => zmenStav(o, novy, form);
+      potvrd.querySelector('[data-ok]').onclick = () => {
+        const duvod = potvrd.querySelector('.duvod')?.value;
+        if (novy === 'odmitnuta' && !duvod) { const f = potvrd.querySelector('[data-f=duvod]'); f.classList.add('chyba'); f.querySelector('.err').textContent = 'Vyberte důvod.'; return; }
+        zmenStav(o, novy, form, duvod, potvrd.querySelector('.neosl')?.checked);
+      };
     }));
   });
 }
-async function zmenStav(o, novy, form) {
+async function zmenStav(o, novy, form, duvod, neoslovovat) {
   form.querySelectorAll('button').forEach((b) => (b.disabled = true));
-  const pozn = form.querySelector('textarea[name=pozn]').value.trim();
-  const { error } = await sb.from('osoba').update({ stav: novy }).eq('id', o.id);
+  const pozn = form.querySelector('textarea[name=pozn]').value.trim(), mail = novy === 'prijata' && form.querySelector('input[name=mail]')?.checked;
+  const { error } = await zmenStavDb([o.id], novy, duvod, neoslovovat);
   if (error) { form.querySelectorAll('button').forEach((b) => (b.disabled = false)); return chybaFormu(form, chyba(error)); }
   if (pozn !== (o.osoba_poznamka?.text || '')) {
     const r = pozn ? await sb.from('osoba_poznamka').upsert({ osoba_id: o.id, text: pozn, zmeneno: new Date().toISOString() }) : await sb.from('osoba_poznamka').delete().eq('osoba_id', o.id);
     if (r.error) return chybaFormu(form, 'Stav je uložený, poznámka ne: ' + chyba(r.error));
   }
   const jm = esc(`${o.jmeno} ${o.prijmeni}`);
-  const text = { prijata: `Přihláška – ${jm}: schváleno ✓ Přihlásí se e-mailem ${esc(o.email)}.`, odmitnuta: `Přihláška – ${jm}: odmítnuto (najdete v Odmítnutých).`, uchazec: `Přihláška – ${jm}: vrácena mezi nové.` }[novy];
-  vPrihlasky(o.stav === 'uchazec' ? 'uchazec' : novy === 'uchazec' ? 'uchazec' : novy === 'prijata' ? 'prijate' : 'odmitnute', msg(text));
+  let text = { prijata: `Přihláška – ${jm}: schváleno ✓ Přihlásí se e-mailem ${esc(o.email)}.`, odmitnuta: `Přihláška – ${jm}: odmítnuto (najdete v Odmítnutých).`, uchazec: `Přihláška – ${jm}: vrácena mezi nové.` }[novy];
+  let typ = 'ok';
+  if (mail) { const r = await posliZpravu([o], 'schvaleno'); text += ' ' + r.text; if (!r.ok) typ = 'warn'; }
+  vPrihlasky(o.stav === 'uchazec' ? 'uchazec' : novy === 'uchazec' ? 'uchazec' : novy === 'prijata' ? 'prijate' : 'odmitnute', msg(text, typ));
 }
 
 // ---------- LIDÉ: přehled všech hostesek s filtry, hromadnými akcemi a detailem ----------
@@ -328,15 +358,15 @@ S.fotoUrl = S.fotoUrl || {};
 async function nactiLidi() {
   await ciselniky();
   const [a, b] = await Promise.all([
-    sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_profil(*), osoba_poznamka(text), osoba_foto(cesta,poradi)').order('vytvoreno', { ascending: false }),
+    sb.from('osoba').select('*, osoba_okres(okres_kod), osoba_profil(*), osoba_poznamka(text), osoba_foto(cesta,poradi), osoba_kancelar(duvod_vyrazeni,neoslovovat)').order('vytvoreno', { ascending: false }),
     sb.rpc('kancelar_lide'),
   ]);
   if (a.error) throw a.error;
   const stav = Object.fromEntries((b.data || []).map((x) => [x.osoba_id, x]));
   const jeden = (x) => (Array.isArray(x) ? x[0] || null : x);
   S.lide = (a.data || []).map((o) => {
-    const p = jeden(o.osoba_profil), s = stav[o.id] || {}, fotky = [...(o.osoba_foto || [])].sort((x, y) => x.poradi - y.poradi);
-    return { ...o, profil: p, pozn: jeden(o.osoba_poznamka)?.text || '', okresy: (o.osoba_okres || []).map((x) => x.okres_kod), fotky: fotky.map((f) => f.cesta),
+    const p = jeden(o.osoba_profil), s = stav[o.id] || {}, fotky = [...(o.osoba_foto || [])].sort((x, y) => x.poradi - y.poradi), k = jeden(o.osoba_kancelar) || {};
+    return { ...o, profil: p, duvod: k.duvod_vyrazeni || '', neoslovovat: !!k.neoslovovat, pozn: jeden(o.osoba_poznamka)?.text || '', okresy: (o.osoba_okres || []).map((x) => x.okres_kod), fotky: fotky.map((f) => f.cesta),
       ma_profil: !!p, udaje: !!s.udaje_hotove, vek: s.vek ?? null, dpp: s.dpp_stav || '', dpp_at: s.dpp_podepsano_at || null,
       hledej: bezDiakritiky([o.jmeno, o.prijmeni, o.email, o.obec].join(' ')) };
   });
@@ -472,8 +502,8 @@ function vykresliTabulku() {
     return `<tr data-id="${o.id}"${S.vyber.has(o.id) ? ' class="vybran"' : ''}>
      <td><input type="checkbox" class="vyb" ${S.vyber.has(o.id) ? 'checked' : ''}></td>
      <td>${nahled(o)}</td>
-     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b><small>${esc(o.obec || '')}</small></td>
-     <td><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span></td>
+     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}<small>${esc(o.obec || '')}</small></td>
+     <td><span class="tag ${STAV_O[o.stav][1]}"${o.duvod ? ` title="Důvod: ${esc(DUVOD[o.duvod] || o.duvod)}"` : ''}>${STAV_O[o.stav][0]}</span>${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>
      <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a><small>${esc((o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '))}</small></td>
      <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}<small>${o.okresy.length} měst</small></td>
      <td>${esc((o.zajem || []).map((z) => ZAJEM[z] || z).join(', '))}</td>
@@ -510,24 +540,37 @@ function hromadne() {
   const el = document.getElementById('hromadne'); const ids = [...S.vyber].filter((id) => S.lide.some((o) => o.id === id));
   if (!ids.length) return el.classList.add('hidden');
   const osoby = S.lide.filter((o) => ids.includes(o.id));
+  const oslovit = osoby.filter((o) => !o.neoslovovat), bez = osoby.length - oslovit.length, bezText = bez ? ` (vynecháno ${bez} – neoslovovat)` : '';
   el.classList.remove('hidden');
   el.innerHTML = `<b>Vybráno ${ids.length}</b>
     <button class="btn o mini" data-h="email">Kopírovat e-maily</button><button class="btn o mini" data-h="tel">Kopírovat telefony</button>
+    <button class="btn o mini" data-h="pripom">Poslat připomínku e-mailem</button>
     <button class="btn o mini" data-h="csv">Export do Excelu (CSV)</button>
     <select id="hstav"><option value="">Změnit stav…</option>${Object.entries(STAV_O).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
     <button class="btn o mini" data-h="zrus">Zrušit výběr</button><span id="hinfo" class="mute"></span>`;
   const info = (t) => (document.getElementById('hinfo').textContent = t);
   const kopiruj = async (t, co) => { try { await navigator.clipboard.writeText(t); info(`Zkopírováno: ${co}`); } catch { info('Kopírování prohlížeč nepovolil.'); } };
-  el.querySelector('[data-h=email]').onclick = () => kopiruj(osoby.map((o) => o.email).join(', '), `${osoby.length} e-mailů`);
-  el.querySelector('[data-h=tel]').onclick = () => kopiruj(osoby.map((o) => o.telefon).join('\n'), `${osoby.length} telefonů`);
+  el.querySelector('[data-h=email]').onclick = () => kopiruj(oslovit.map((o) => o.email).join(', '), `${oslovit.length} e-mailů${bezText}`);
+  el.querySelector('[data-h=tel]').onclick = () => kopiruj(oslovit.map((o) => o.telefon).join('\n'), `${oslovit.length} telefonů${bezText}`);
+  el.querySelector('[data-h=pripom]').onclick = () => {
+    el.querySelector('.potvrd-h')?.remove();
+    el.insertAdjacentHTML('beforeend', `<div class="potvrd-h">${msg(`Poslat připomínku ${oslovit.length} lidem${bezText}? Každý dostane e-mail podle toho, co mu chybí (přihlášení, profil, údaje, podpis smlouvy). Komu nic nechybí nebo připomínka odešla v posledních 3 dnech, toho aplikace vynechá.`, 'warn')}<button class="btn mini" data-ok>Ano, poslat</button> <button class="btn o mini" data-ne>Ne</button></div>`);
+    el.querySelector('[data-ne]').onclick = () => el.querySelector('.potvrd-h').remove();
+    el.querySelector('[data-ok]').onclick = async (e) => { e.target.disabled = true; info('Posílám…');
+      const r = oslovit.length ? await posliZpravu(oslovit, 'pripominka') : { text: 'Není komu poslat.' };
+      el.querySelector('.potvrd-h').remove(); info(r.text.replace(/<[^>]+>/g, '')); };
+  };
   el.querySelector('[data-h=csv]').onclick = () => { exportCsv(osoby); info('Soubor stažen.'); };
   el.querySelector('[data-h=zrus]').onclick = () => { S.vyber.clear(); vykresliTabulku(); };
   el.querySelector('#hstav').onchange = (e) => {
     const novy = e.target.value; if (!novy) return;
-    el.insertAdjacentHTML('beforeend', `<div class="potvrd-h">${msg(`Opravdu změnit stav ${ids.length} lidí na „${STAV_O[novy][0]}“?`, 'warn')}<button class="btn mini" data-ok>Ano, změnit</button> <button class="btn o mini" data-ne>Ne</button></div>`);
+    el.querySelector('.potvrd-h')?.remove();
+    el.insertAdjacentHTML('beforeend', `<div class="potvrd-h">${msg(`Opravdu změnit stav ${ids.length} lidí na „${STAV_O[novy][0]}“?`, 'warn')}${sDuvodem(novy) ? `Důvod: ${duvodVolba()} ` : ''}<button class="btn mini" data-ok>Ano, změnit</button> <button class="btn o mini" data-ne>Ne</button></div>`);
     el.querySelector('[data-ne]').onclick = () => vykresliTabulku();
     el.querySelector('[data-ok]').onclick = async () => {
-      const { error } = await sb.from('osoba').update({ stav: novy }).in('id', ids);
+      const duvod = el.querySelector('.potvrd-h .duvod')?.value;
+      if (sDuvodem(novy) && !duvod) return info('Vyberte důvod.');
+      const { error } = await zmenStavDb(ids, novy, duvod);
       if (error) return info(chyba(error));
       S.vyber.clear(); vLide(msg(`Stav změněn u ${ids.length} lidí.`));
     };
@@ -551,9 +594,9 @@ async function vDetailOsoby(id) {
   const d = document.getElementById('detail'); d.classList.remove('hidden');
   const p = o.profil || {}, tel = o.telefon.replace(/\D/g, '');
   const mistaPodleKraju = mistaText(o.okresy);
-  d.innerHTML = `<div class="det-hl"><div><h2>${esc(o.jmeno)} ${esc(o.prijmeni)}</h2><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span> <span class="mute">registrace ${datum(o.vytvoreno)}</span></div><button class="zavrit" title="Zavřít">✕</button></div>
+  d.innerHTML = `<div class="det-hl"><div><h2>${esc(o.jmeno)} ${esc(o.prijmeni)}</h2><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span>${neoslovovatZn(o)} <span class="mute">registrace ${datum(o.vytvoreno)}</span></div><button class="zavrit" title="Zavřít">✕</button></div>
    <div class="det-fotky" id="det-fotky">${o.fotky.length ? o.fotky.map((c) => `<img data-cesta="${esc(c)}" alt="">`).join('') : `<span class="foto bez velka">${inicialy(o)}</span><span class="mute">Bez fotky – hosteska ji může nahrát v profilu.</span>`}</div>
-   <div class="det-akce"><a class="btn o mini" href="tel:${esc(o.telefon)}">📞 Zavolat</a><a class="btn o mini" href="mailto:${esc(o.email)}">✉ E-mail</a><a class="btn o mini" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a></div>
+   <div class="det-akce"><a class="btn o mini" href="tel:${esc(o.telefon)}">📞 Zavolat</a><a class="btn o mini" href="mailto:${esc(o.email)}">✉ E-mail</a><a class="btn o mini" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a><button class="btn o mini" id="upravit">✏ Upravit údaje</button></div>
    <section><h3>Kontakt a registrace</h3><dl>
     <dt>Telefon</dt><dd>${esc(o.telefon)}</dd><dt>E-mail</dt><dd>${esc(o.email)}</dd><dt>Bydliště</dt><dd>${esc(o.obec || '')}</dd>
     <dt>Může pracovat</dt><dd>${mistaPodleKraju}</dd><dt>Zájem</dt><dd>${(o.zajem || []).map((z) => esc(ZAJEM[z] || z)).join(', ')}</dd>
@@ -565,15 +608,28 @@ async function vDetailOsoby(id) {
    <section><h3>Smlouva a podklady</h3><div id="det-smlouva"><p class="mute">${S.smlouvy ? 'Načítám…' : `Údaje pro smlouvu: <b>${o.udaje ? 'potvrzené' : 'chybí'}</b> · DPP: <b>${o.dpp ? DPP_TXT[o.dpp] + (o.dpp_at ? ' (' + datum(o.dpp_at) + ')' : '') : 'zatím ne'}</b><br>Podrobnosti vidí jen role Smlouvy.`}</p></div></section>
    <section><h3>Stav a poznámka</h3><form id="det-f" novalidate>
     <div class="fld"><label>Stav</label><select id="det-stav">${Object.entries(STAV_O).map(([k, v]) => `<option value="${k}"${k === o.stav ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></div>
+    <div class="fld${sDuvodem(o.stav) ? '' : ' hidden'}" id="det-duvod" data-f="duvod"><label>Důvod odmítnutí / vyřazení</label>${duvodVolba(o.duvod)}<div class="err"></div></div>
+    <label class="chk"><input type="checkbox" id="det-neosl"${o.neoslovovat ? ' checked' : ''}> <span>Neoslovovat – hromadné akce a připomínky ji vynechají</span></label>
     <div class="fld"><label>Interní poznámka (hosteska ji neuvidí)</label><textarea id="det-pozn" rows="3">${esc(o.pozn)}</textarea></div>
     <button class="btn" type="submit">Uložit</button></form></section>
+   <section><h3>Zprávy hostesce</h3>
+    ${o.neoslovovat ? '<p class="mute">Neoslovovat – zprávy se neposílají.</p>' : `<div class="akce"><button class="btn o mini" id="z-pripom">Poslat připomínku e-mailem</button>${o.stav === 'prijata' || o.stav === 'aktivni' ? '<button class="btn o mini" id="z-schv">Poslat e-mail o schválení</button>' : ''}</div>
+    <p class="pozn">Připomínka sama vybere, co chybí: přihlášení do aplikace, profil, údaje pro smlouvu, nebo podpis smlouvy. Stejnému člověku odejde nejvýš jednou za 3 dny.</p>`}
+    <div id="z-msg"></div><div id="det-zpravy" class="mute">Načítám…</div></section>
    ${S.vedeni || S.tbdb ? '<section><h3>Historie změn</h3><div id="det-hist" class="mute">Načítám…</div></section>' : ''}`;
   d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
   podepisFotky(o.fotky).then(() => d.querySelectorAll('#det-fotky img').forEach((img) => (img.src = S.fotoUrl[img.dataset.cesta] || '')));
+  d.querySelector('#upravit').onclick = () => vUpravOsobu(o);
+  d.querySelector('#det-stav').onchange = (e) => d.querySelector('#det-duvod').classList.toggle('hidden', !sDuvodem(e.target.value));
   d.querySelector('#det-f').onsubmit = async (e) => {
     e.preventDefault();
     const stav = d.querySelector('#det-stav').value, pozn = d.querySelector('#det-pozn').value.trim();
-    if (stav !== o.stav) { const { error } = await sb.from('osoba').update({ stav }).eq('id', id); if (error) return chybaFormu(e.target, chyba(error)); o.stav = stav; }
+    const duvod = sDuvodem(stav) ? d.querySelector('#det-duvod .duvod').value : '', neosl = d.querySelector('#det-neosl').checked;
+    if (sDuvodem(stav) && !duvod) { const f = d.querySelector('#det-duvod'); f.classList.add('chyba'); f.querySelector('.err').textContent = 'Vyberte důvod.'; return; }
+    if (stav !== o.stav || duvod !== o.duvod || neosl !== o.neoslovovat) {
+      const { error } = await zmenStavDb([id], stav, duvod, neosl); if (error) return chybaFormu(e.target, chyba(error));
+      Object.assign(o, { stav, duvod, neoslovovat: neosl });
+    }
     if (pozn !== o.pozn) {
       const r = pozn ? await sb.from('osoba_poznamka').upsert({ osoba_id: id, text: pozn, zmeneno: new Date().toISOString() }) : await sb.from('osoba_poznamka').delete().eq('osoba_id', id);
       if (r.error) return chybaFormu(e.target, chyba(r.error)); o.pozn = pozn;
@@ -581,8 +637,89 @@ async function vDetailOsoby(id) {
     vykresliTabulku(); vDetailOsoby(id);
     d.querySelector('#det-f').insertAdjacentHTML('afterbegin', msg('Uloženo ✓'));
   };
+  const zpravaBtn = (sel, typ) => { const b = d.querySelector(sel); if (b) b.onclick = async () => {
+    b.disabled = true; d.querySelector('#z-msg').innerHTML = msg('Posílám…', 'warn');
+    const r = await posliZpravu([o], typ); d.querySelector('#z-msg').innerHTML = msg(r.text, r.ok ? 'ok' : 'warn'); b.disabled = false; detailZpravy(o);
+  }; };
+  zpravaBtn('#z-pripom', 'pripominka'); zpravaBtn('#z-schv', 'schvaleno');
+  detailZpravy(o);
   if (S.smlouvy) detailSmlouva(o);
   if (S.vedeni || S.tbdb) detailHistorie(o);
+}
+
+const ZPRAVA_TYP = { schvaleno: 'schválení přihlášky', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
+async function detailZpravy(o) {
+  const box = document.getElementById('det-zpravy'); if (!box) return;
+  const { data, error } = await sb.from('osoba_zprava').select('typ,vysledek,chyba,adresat,vytvoreno').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }).limit(10);
+  if (error) { box.textContent = 'Zprávy se nepodařilo načíst.'; return; }
+  box.innerHTML = (data || []).length ? `<ul class="hist">${data.map((z) => `<li><b>${new Date(z.vytvoreno).toLocaleString('cs-CZ')}</b> – ${esc(ZPRAVA_TYP[z.typ] || z.typ)}: ${esc(ZPRAVA_VYS[z.vysledek] || z.vysledek)}${z.chyba ? ' (' + esc(z.chyba) + ')' : ''}</li>`).join('')}</ul>` : 'Zatím jí kancelář nic neposlala.';
+}
+
+// ---------- úprava údajů člověka kanceláří ----------
+function vUpravOsobu(o) {
+  const d = document.getElementById('detail'), p = o.profil || {};
+  const okresyKraje = Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs')).map(([kk, kn]) => {
+    const ok = Object.values(S.cis.okres).filter((x) => x.kraj_kod === kk).sort((a, b) => a.mesto.localeCompare(b.mesto, 'cs'));
+    const vyb = ok.filter((x) => o.okresy.includes(x.kod)).length;
+    return `<details class="upr-kraj"${vyb ? ' open' : ''}><summary>${esc(kn)} <span class="mute">${vyb ? `(${vyb})` : ''}</span></summary>
+      <label class="chk"><input type="checkbox" class="cely-kraj"> <span><b>celý kraj</b></span></label>
+      ${ok.map((x) => `<label class="chk"><input type="checkbox" name="okres" value="${x.kod}"${o.okresy.includes(x.kod) ? ' checked' : ''}> <span>${esc(x.mesto)}</span></label>`).join('')}</details>`;
+  }).join('');
+  const zaskrt = (nazev, mapa, vybrane) => Object.entries(mapa).map(([k, v]) => `<label class="chk"><input type="checkbox" name="${nazev}" value="${k}"${(vybrane || []).includes(k) ? ' checked' : ''}> <span>${esc(v)}</span></label>`).join(' ');
+  const pole = (id, label, val, typ = 'text', extra = '') => `<div class="fld" data-f="${id}"><label for="u-${id}">${label}</label><input id="u-${id}" type="${typ}" value="${esc(val ?? '')}"${extra}><div class="err"></div></div>`;
+  d.innerHTML = `<div class="det-hl"><div><h2>Upravit: ${esc(o.jmeno)} ${esc(o.prijmeni)}</h2><span class="mute">Změny se zapíšou do historie.</span></div><button class="zavrit" title="Zavřít">✕</button></div>
+   <form id="upr-f" novalidate>
+    <section><h3>Kontakt a bydliště</h3>
+     ${pole('jmeno', 'Jméno', o.jmeno)}${pole('prijmeni', 'Příjmení', o.prijmeni)}
+     ${pole('telefon', 'Telefon', o.telefon, 'tel')}${pole('email', 'E-mail', o.email, 'email')}
+     ${o.auth_user_id ? '<p class="pozn">Hosteska už má účet: když změníte e-mail, přihlašuje se dál původním e-mailem. Změnu přihlašovacího e-mailu zařídí TBDB.</p>' : ''}
+     <div class="fld" data-f="kraj"><label for="u-kraj">Kraj bydliště</label><select id="u-kraj">${Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs')).map(([k, v]) => `<option value="${k}"${k === o.kraj_kod ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select><div class="err"></div></div>
+     ${pole('obec', 'Obec', o.obec)}
+     <div class="fld" data-f="zajem"><label>Zájem</label>${zaskrt('zajem', ZAJEM, o.zajem)}<div class="err"></div></div>
+     <div class="fld" data-f="kanal"><label>Kontakt přes</label>${zaskrt('kanal', KANAL, o.kanal_kontaktu)}<div class="err"></div></div></section>
+    <section><h3>Kde může pracovat</h3><div class="fld" data-f="okresy">${okresyKraje}<div class="err"></div></div></section>
+    <section><h3>Profil</h3>
+     ${pole('vyska', 'Výška (cm)', p.vyska_cm, 'number', ' min="120" max="220"')}
+     <div class="fld" data-f="konfekce"><label for="u-konfekce">Konfekce</label><select id="u-konfekce"><option value="">–</option>${KONFEKCE.map((k) => `<option${k === p.konfekce ? ' selected' : ''}>${k}</option>`).join('')}</select><div class="err"></div></div>
+     ${pole('bota', 'Bota (EU)', p.bota_eu, 'number', ' min="30" max="50" step="0.5"')}
+     ${pole('jazyky', 'Jazyky (oddělte čárkou)', (p.jazyky || []).join(', '))}
+     <label class="chk"><input type="checkbox" id="u-ridicak"${p.ridicak ? ' checked' : ''}> <span>Řidičský průkaz</span></label>
+     <label class="chk"><input type="checkbox" id="u-auto"${p.vlastni_auto ? ' checked' : ''}> <span>Vlastní auto</span></label>
+     ${pole('dostupnost', 'Kdy může pracovat', p.dostupnost)}
+     <div class="fld" data-f="zkusenosti"><label for="u-zkusenosti">Zkušenosti</label><textarea id="u-zkusenosti" rows="3">${esc(p.zkusenosti || '')}</textarea><div class="err"></div></div></section>
+    <div class="akce"><button class="btn" type="submit">Uložit změny</button> <button class="btn o" type="button" id="upr-zpet">Zpět bez uložení</button></div>
+   </form>`;
+  d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
+  d.querySelector('#upr-zpet').onclick = () => vDetailOsoby(o.id);
+  d.querySelectorAll('.cely-kraj').forEach((c) => (c.onchange = () => c.closest('details').querySelectorAll('input[name=okres]').forEach((x) => (x.checked = c.checked))));
+  d.querySelector('#upr-f').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target, h = (id) => d.querySelector('#u-' + id).value.trim(), vyb = (n) => [...d.querySelectorAll(`input[name=${n}]:checked`)].map((x) => x.value);
+    f.querySelectorAll('.fld.chyba').forEach((x) => { x.classList.remove('chyba'); x.querySelector('.err').textContent = ''; });
+    const chyby = {};
+    if (!h('jmeno')) chyby.jmeno = 'Vyplňte jméno.'; if (!h('prijmeni')) chyby.prijmeni = 'Vyplňte příjmení.';
+    const tc = K.telefonChyba(h('telefon')); if (tc) chyby.telefon = tc;
+    const ec = K.emailChyba(h('email')); if (ec) chyby.email = ec;
+    if (!h('obec')) chyby.obec = 'Vyplňte obec.';
+    if (!vyb('zajem').length) chyby.zajem = 'Vyberte aspoň jednu možnost.';
+    if (!vyb('okres').length) chyby.okresy = 'Vyberte aspoň jedno město.';
+    if (h('vyska') && (+h('vyska') < 120 || +h('vyska') > 220)) chyby.vyska = 'Výška 120–220 cm.';
+    if (h('bota') && (+h('bota') < 30 || +h('bota') > 50)) chyby.bota = 'Velikost bot 30–50.';
+    if (Object.keys(chyby).length) {
+      Object.entries(chyby).forEach(([k, t]) => { const x = f.querySelector(`[data-f=${k}]`); x.classList.add('chyba'); x.querySelector('.err').textContent = t; });
+      return f.querySelector('.fld.chyba').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    const profil = { vyska_cm: h('vyska') || null, konfekce: h('konfekce'), bota_eu: h('bota') || null, jazyky: h('jazyky').split(',').map((x) => x.trim()).filter(Boolean),
+      ridicak: d.querySelector('#u-ridicak').checked, vlastni_auto: d.querySelector('#u-auto').checked, dostupnost: h('dostupnost'), zkusenosti: h('zkusenosti') };
+    const profilPrazdny = !o.profil && !profil.vyska_cm && !profil.konfekce && !profil.bota_eu && !profil.jazyky.length && !profil.ridicak && !profil.vlastni_auto && !profil.dostupnost && !profil.zkusenosti;
+    f.querySelector('button[type=submit]').disabled = true;
+    const { error } = await sb.rpc('kancelar_uprav_osobu', { p_id: o.id,
+      p_osoba: { jmeno: h('jmeno'), prijmeni: h('prijmeni'), telefon: K.telefonNormalizuj(h('telefon')), email: h('email'), kraj_kod: h('kraj'), obec: h('obec'), zajem: vyb('zajem'), kanal_kontaktu: vyb('kanal') },
+      p_okresy: vyb('okres'), p_profil: profilPrazdny ? null : profil });
+    if (error) { f.querySelector('button[type=submit]').disabled = false; return chybaFormu(f, chyba(error)); }
+    await nactiLidi(); vykresliTabulku(); await vDetailOsoby(o.id);
+    d.querySelector('.det-hl').insertAdjacentHTML('afterend', msg('Údaje uloženy ✓'));
+  };
 }
 
 async function detailSmlouva(o) {
@@ -658,7 +795,7 @@ async function detailHistorie(o) {
   const box = document.getElementById('det-hist'); if (!box) return;
   const { data, error } = await sb.from('historie_zmen').select('tabulka,akce,kdy,pred').eq('zaznam_id', o.id).order('kdy', { ascending: false }).limit(20);
   if (error) { box.textContent = 'Historii se nepodařilo načíst.'; return; }
-  const TAB = { osoba: 'registrace / stav', osoba_profil: 'profil', osoba_nastup: 'údaje pro smlouvu' };
+  const TAB = { osoba: 'registrace / stav', osoba_profil: 'profil', osoba_nastup: 'údaje pro smlouvu', osoba_kancelar: 'důvod / neoslovovat' };
   box.innerHTML = (data || []).length ? `<ul class="hist">${data.map((h) => `<li><b>${new Date(h.kdy).toLocaleString('cs-CZ')}</b> – ${esc(TAB[h.tabulka] || h.tabulka)}: ${h.akce === 'DELETE' ? 'smazáno' : 'změna'}${h.pred?.stav ? ` (dříve ${esc(STAV_O[h.pred.stav]?.[0] || h.pred.stav)})` : ''}</li>`).join('')}</ul>` : 'Zatím žádné změny.';
 }
 

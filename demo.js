@@ -25,7 +25,7 @@ const rcVyrob = (d, zena) => { const b = String(d.getFullYear() % 100).padStart(
 const ucetVyrob = () => { const w = [6, 3, 7, 9, 10, 5, 8, 4, 2, 1]; for (;;) { const d = Array.from({ length: 10 }, (_, i) => (i < 2 ? 0 : nah(10))); d[2] = 1 + nah(9); if (d.reduce((a, v, i) => a + v * w[i], 0) % 11 === 0) return d.join('').replace(/^0+/, ''); } };
 const iso = (d) => d.toISOString();
 const DEN = 86400000, TED = Date.now();
-const db = { foto: {}, osoba: [], okres: {}, profil: {}, nastup: {}, dok: {}, pozn: {}, hist: [], tiket: [], zprava: [] };
+const db = { foto: {}, osoba: [], okres: {}, profil: {}, nastup: {}, dok: {}, pozn: {}, hist: [], tiket: [], zprava: [], kanc: {}, zpravyH: [] };
 const stavy = [...Array(12).fill('uchazec'), ...Array(70).fill('aktivni'), ...Array(20).fill('prijata'), ...Array(10).fill('neaktivni')];
 stavy.forEach((stav, i) => {
   const muz = nah(100) < 13, jm = muz ? vyber(MJ) : vyber(ZJ), pr = muz ? vyber(MP) : vyber(ZP), m = vyber(MESTA);
@@ -81,7 +81,7 @@ window.VIXEN_DEMO_AUTH = { storageKey: KLIC, storage: window.sessionStorage, aut
 const odpoved = (d, status = 200, h = {}) => new Response(d === undefined || status === 204 ? null : JSON.stringify(d), { status, headers: { 'content-type': 'application/json', ...h } });
 const hodnota = (q, k) => { const v = q.get(k); return v == null ? null : v.replace(/^(eq|in)\./, '').replace(/^\(|\)$/g, ''); };
 const zaznamZmeny = (id, pred) => db.hist.unshift({ tabulka: 'osoba', zaznam_id: id, akce: 'UPDATE', kdy: new Date().toISOString(), pred });
-const osobaPlna = (o) => ({ ...o, osoba_foto: (db.foto[o.id] || []).map((cesta, i) => ({ cesta, poradi: i + 1 })), osoba_okres: db.okres[o.id].map((okres_kod) => ({ okres_kod })), osoba_profil: db.profil[o.id] || null, osoba_poznamka: db.pozn[o.id] ? { text: db.pozn[o.id] } : null });
+const osobaPlna = (o) => ({ ...o, osoba_foto: (db.foto[o.id] || []).map((cesta, i) => ({ cesta, poradi: i + 1 })), osoba_okres: db.okres[o.id].map((okres_kod) => ({ okres_kod })), osoba_profil: db.profil[o.id] || null, osoba_poznamka: db.pozn[o.id] ? { text: db.pozn[o.id] } : null, osoba_kancelar: db.kanc[o.id] || null });
 const dppStav = (d) => !d ? null : d.odstoupeno_at ? 'odstoupeno' : d.stav === 'k_podpisu' ? (d.vixen_podepsano_at ? 'ceka_hosteska' : 'ceka_vixen')
   : !d.odeslano_at ? 'neodeslano' : new Date(d.odstoupeni_do) > new Date() ? 'lhuta' : 'uzavreno';
 const puvodniFetch = window.fetch.bind(window);
@@ -104,6 +104,26 @@ window.fetch = async (vstup, init = {}) => {
     Object.assign(d, { odeslano_at: new Date().toISOString(), odeslano_na: 'UKÁZKA – neodesláno', odstoupeni_do: new Date(Date.now() + 7 * DEN).toISOString() }); return odpoved({ odeslano: true, na: 'ukázka' }); }
   if (p.endsWith('/rest/v1/podpisujici')) return odpoved({ jmeno: 'Ladislava Lišková (ukázka)', opravneni: 'zaměstnavatel (OSVČ)', do_: null });
   if (p.endsWith('/rpc/dokument_priprav')) { const id = body.p_osoba; db.dok[id] = [{ id: 'dd-n' + Date.now(), stav: 'k_podpisu', obsah: 'DOHODA O PROVEDENÍ PRÁCE\nUKÁZKOVÝ TEXT – vzor dodá Vixen', vytvoreno: new Date().toISOString(), podepsano_at: null, podpis: null, dokument_sablona: { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' } }, ...(db.dok[id] || [])]; return odpoved('nove'); }
+  if (p.endsWith('/rpc/zmen_stav')) {
+    if (['odmitnuta', 'neaktivni'].includes(body.p_stav) && !body.p_duvod) return odpoved({ message: 'Vyberte důvod (odmítnutí / vyřazení).' }, 400);
+    db.osoba.filter((o) => body.p_osoby.includes(o.id)).forEach((o) => { if (o.stav !== body.p_stav) { zaznamZmeny(o.id, { stav: o.stav }); o.stav = body.p_stav; }
+      const k = db.kanc[o.id] || { neoslovovat: false }; db.kanc[o.id] = { duvod_vyrazeni: ['odmitnuta', 'neaktivni'].includes(body.p_stav) ? body.p_duvod : null, neoslovovat: body.p_neoslovovat ?? k.neoslovovat }; });
+    return odpoved(body.p_osoby.length);
+  }
+  if (p.endsWith('/rpc/kancelar_uprav_osobu')) { const o = db.osoba.find((x) => x.id === body.p_id);
+    if (db.osoba.some((x) => x.id !== o.id && x.telefon === body.p_osoba.telefon)) return odpoved({ message: 'Tento telefon už má v evidenci někdo jiný.' }, 400);
+    zaznamZmeny(o.id, { ...o }); Object.assign(o, body.p_osoba); db.okres[o.id] = body.p_okresy;
+    if (body.p_profil) db.profil[o.id] = { ...(db.profil[o.id] || {}), osoba_id: o.id, ...body.p_profil, vyska_cm: body.p_profil.vyska_cm ? +body.p_profil.vyska_cm : null, bota_eu: body.p_profil.bota_eu ? +body.p_profil.bota_eu : null };
+    return odpoved(null); }
+  if (p.endsWith('/functions/v1/hosteska-zprava')) {
+    const vysledky = body.osoba_ids.map((id) => { const o = db.osoba.find((x) => x.id === id), k = db.kanc[id] || {};
+      const v = k.neoslovovat ? ['vynechano', 'neoslovovat'] : !['prijata', 'aktivni'].includes(o.stav) ? ['vynechano', 'není přijatá ani aktivní'] : ['vyvoj_neodeslano', 'ukázka – nic se neposílá'];
+      if (v[0] !== 'vynechano') db.zpravyH.unshift({ osoba_id: id, typ: body.typ === 'schvaleno' ? 'schvaleno' : !db.profil[id] ? 'pripominka_profil' : 'pripominka_udaje', vysledek: v[0], chyba: v[1], vytvoreno: new Date().toISOString() });
+      return { osoba_id: id, vysledek: v[0], zprava: v[1] }; });
+    const n = (x) => vysledky.filter((v) => v.vysledek === x).length;
+    return odpoved({ vysledky, odeslano: 0, vyvoj: n('vyvoj_neodeslano'), vynechano: n('vynechano'), chyby: 0 });
+  }
+  if (p.endsWith('/rest/v1/osoba_zprava')) return odpoved(db.zpravyH.filter((z) => z.osoba_id === hodnota(q, 'osoba_id')));
   for (const t of ['kraj', 'okres', 'zdravotni_pojistovna']) if (p.endsWith('/rest/v1/' + t)) return odpoved(CIS[t]);
   if (p.endsWith('/rest/v1/osoba')) {
     const stav = hodnota(q, 'stav'), ids = hodnota(q, 'id');
