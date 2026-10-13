@@ -69,6 +69,18 @@ body.siroka main{max-width:1440px}
 .detail h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:2px 0 8px}.detail h4{margin:12px 0 6px;font-size:14px}
 .detail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:14.5px}.detail dt{color:var(--mute)}.detail dd{margin:0}
 .dok-r{display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px solid #f0ebe1;padding:6px 0}.dok-r small{display:block;color:var(--mute);font-size:12px}
+.reg-hlava{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}.reg-hlava h1{margin:0}
+.reg-taby{display:flex;gap:6px;flex-wrap:wrap}.reg-taby button{border:1px solid var(--line);background:#fff;border-radius:99px;padding:7px 14px;font:inherit;font-size:14px;cursor:pointer;color:var(--ink)}
+.reg-taby button b{background:#eee8dc;border-radius:99px;padding:0 7px;margin-left:4px;font-size:12px}.reg-taby button.on{background:var(--ink);color:#fff;border-color:var(--ink)}.reg-taby button.on b{background:var(--gold);color:#fff}
+#reg-hledat{margin-left:auto;flex:0 1 260px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;font:inherit}
+.reg-obal{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,460px);gap:16px;align-items:start}
+.reg-detail{position:sticky;top:70px;max-height:calc(100vh - 86px);overflow:auto}.reg-detail .prihl{margin:0}
+.reg-tab tbody tr.on{background:var(--gold-s);box-shadow:inset 3px 0 0 var(--gold)}
+.reg-tab td{vertical-align:middle}
+.ceka{display:inline-block;border-radius:99px;padding:2px 9px;font-size:12.5px;font-weight:600}.ceka.ok{background:#e3f1e6;color:#2c6b3a}.ceka.wa{background:#fbecd2;color:#8a5a10}.ceka.no{background:#f8dcdc;color:#9b2c2c}
+.ik{border:1px solid var(--line);background:#fff;border-radius:8px;width:32px;height:32px;font-size:16px;cursor:pointer;margin-right:4px}.ik.ok{color:#2c6b3a}.ik.no{color:#9b2c2c}.ik:hover{background:#faf7f1}
+.chk.mini{margin:0;font-size:13px}.chk.mini input{width:16px;height:16px}
+@media(max-width:900px){.reg-obal{grid-template-columns:1fr}.reg-detail{position:static;max-height:none}#reg-hledat{margin-left:0;flex:1 1 100%}}
 #upr-f .fld .chk{display:inline-flex;margin:6px 14px 6px 0}
 .upr-kraj{border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:6px 0;background:#fff}.upr-kraj summary{cursor:pointer;font-weight:600}
 #upr-f .upr-kraj .chk{width:calc(50% - 16px);margin:4px 14px 4px 0}
