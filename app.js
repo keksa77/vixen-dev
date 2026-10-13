@@ -204,8 +204,10 @@ function vRegistrace() {
       okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze } });
     if (error) {
       b.disabled = false; b.textContent = 'Odeslat registraci';
-      if (/evidujeme|duplicit/i.test(error.message || '')) for (const id of ['email', 'telefon']) {
-        const f = document.querySelector(`.fld[data-f="${id}"]`); if (f) { f.classList.add('chyba'); f.querySelector('.err').textContent = 'Už evidujeme – zkontrolujte nebo se nám ozvěte.'; }
+      // duplicita: označit jen to pole, které je obsazené (telefon / e-mail); starší hláška bez určení = obě
+      const t = error.message || '';
+      if (/evidujeme|duplicit/i.test(t)) for (const id of /telefon/i.test(t) && !/e-mail/i.test(t) ? ['telefon'] : /e-mail/i.test(t) && !/telefon/i.test(t) ? ['email'] : ['email', 'telefon']) {
+        const f = document.querySelector(`.fld[data-f="${id}"]`); if (f) { f.classList.add('chyba'); f.querySelector('.err').textContent = `Tento ${id === 'email' ? 'e-mail' : 'telefon'} už evidujeme – zkontrolujte ho nebo se nám ozvěte.`; }
       }
       chybaFormu(e.target, chybaText(error)); return;
     }
