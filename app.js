@@ -114,18 +114,19 @@ function zapniOblast() {
 const oblastVyber = () => [...document.querySelectorAll('.okresy:not(.hidden) input[name=okres]:checked')].map((x) => x.value);
 
 // ---------- start ----------
+// číselníky se načítají na pozadí – úvod se ukáže hned; registrace a přihlášený obsah na ně počkají
 async function start() {
-  const [kraj, okres, stat, zp, banka] = await Promise.all([
+  S.cisP = Promise.all([
     sb.from('kraj').select('kod,nazev').order('poradi'),
     sb.from('okres').select('kod,mesto,kraj_kod').order('poradi'),
     sb.from('stat').select('kod,nazev').order('nazev'),
     sb.from('zdravotni_pojistovna').select('kod,nazev').order('kod'),
     sb.from('banka').select('kod,nazev').order('nazev'),
-  ]);
-  S.cis = { kraj: kraj.data || [], okres: okres.data || [], stat: stat.data || [], zp: zp.data || [], banka: banka.data || [] };
+  ]).then(([kraj, okres, stat, zp, banka]) => { S.cis = { kraj: kraj.data || [], okres: okres.data || [], stat: stat.data || [], zp: zp.data || [], banka: banka.data || [] }; });
   const { data } = await sb.auth.getSession();
-  if (data.session) return poPrihlaseni();
-  location.hash === '#registrace' ? vRegistrace() : vUvod();
+  if (data.session) { await S.cisP; return poPrihlaseni(); }
+  if (location.hash === '#registrace') { await S.cisP; return vRegistrace(); }
+  vUvod();
 }
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.osoba) poPrihlaseni(); });
 document.getElementById('odhlasit').onclick = async () => { await sb.auth.signOut(); location.hash = ''; location.reload(); };
@@ -144,7 +145,7 @@ function vUvod() {
     <button class="btn" id="b1">Chci se zaregistrovat</button><button class="btn o" id="b2">Už mám registraci – přihlásit</button></section>
    <div class="vyhody">${VYHODY.map(([ikona, t, p]) => `<div>${ikona}<p style="margin:0"><b>${t}</b><span>${p}</span></p></div>`).join('')}</div>
    <p class="mute" style="text-align:center">Registrace zabere 2 minuty. Údaje pro smlouvu až před první akcí.</p>`;
-  document.getElementById('b1').onclick = vRegistrace;
+  document.getElementById('b1').onclick = async () => { await S.cisP; vRegistrace(); };
   document.getElementById('b2').onclick = vPrihlaseni;
 }
 
@@ -240,7 +241,7 @@ function vPrihlaseni() {
    ${DEV ? pole('heslo', 'Heslo (jen pro testy ve vývoji)', '', { typ: 'password' }) : ''}
    <button class="btn" type="submit">${DEV ? 'Přihlásit' : 'Poslat odkaz'}</button></form>
    <p class="mute" style="text-align:center"><a href="#" id="reg">Nemám registraci</a></p>`;
-  document.getElementById('reg').onclick = (e) => { e.preventDefault(); vRegistrace(); };
+  document.getElementById('reg').onclick = async (e) => { e.preventDefault(); await S.cisP; vRegistrace(); };
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     if (!ukazChyby({ email: K.emailChyba(val('email')) })) return;
@@ -263,7 +264,7 @@ async function poPrihlaseni() {
   if (error || !id) {
     $app.innerHTML = msg('E-mail ' + esc(user?.email) + ' v evidenci nemáme. Zaregistrujte se prosím stejným e-mailem.', 'warn') + '<button class="btn" id="r">Registrace</button>';
     document.getElementById('odhlasit').classList.remove('hidden');
-    document.getElementById('r').onclick = async () => { await sb.auth.signOut(); vRegistrace(); };
+    document.getElementById('r').onclick = async () => { await sb.auth.signOut(); await S.cisP; vRegistrace(); };
     return;
   }
   document.getElementById('odhlasit').classList.remove('hidden');
