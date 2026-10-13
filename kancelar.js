@@ -765,7 +765,7 @@ function vUpravOsobu(o) {
      ${pole('vyska', 'Výška (cm)', p.vyska_cm, 'number', ' min="120" max="220"')}
      <div class="fld" data-f="konfekce"><label for="u-konfekce">Konfekce</label><select id="u-konfekce"><option value="">–</option>${KONFEKCE.map((k) => `<option${k === p.konfekce ? ' selected' : ''}>${k}</option>`).join('')}</select><div class="err"></div></div>
      ${pole('bota', 'Bota (EU)', p.bota_eu, 'number', ' min="30" max="50" step="0.5"')}
-     ${pole('jazyky', 'Jazyky (oddělte čárkou)', (p.jazyky || []).join(', '))}
+     ${K.jazykyHtml(p.jazyky || [])}
      <label class="chk"><input type="checkbox" id="u-ridicak"${p.ridicak ? ' checked' : ''}> <span>Řidičský průkaz</span></label>
      <label class="chk"><input type="checkbox" id="u-auto"${p.vlastni_auto ? ' checked' : ''}> <span>Vlastní auto</span></label>
      ${pole('dostupnost', 'Kdy může pracovat', p.dostupnost)}
@@ -774,6 +774,7 @@ function vUpravOsobu(o) {
    </form>`;
   d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
   d.querySelector('#upr-zpet').onclick = () => vDetailOsoby(o.id);
+  K.jazykyZapni(d.querySelector('#upr-f'));
   d.querySelectorAll('.cely-kraj').forEach((c) => (c.onchange = () => c.closest('details').querySelectorAll('input[name=okres]').forEach((x) => (x.checked = c.checked))));
   d.querySelector('#upr-f').onsubmit = async (e) => {
     e.preventDefault();
@@ -792,7 +793,7 @@ function vUpravOsobu(o) {
       Object.entries(chyby).forEach(([k, t]) => { const x = f.querySelector(`[data-f=${k}]`); x.classList.add('chyba'); x.querySelector('.err').textContent = t; });
       return f.querySelector('.fld.chyba').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    const profil = { vyska_cm: h('vyska') || null, konfekce: h('konfekce'), bota_eu: h('bota') || null, jazyky: h('jazyky').split(',').map((x) => x.trim()).filter(Boolean),
+    const profil = { vyska_cm: h('vyska') || null, konfekce: h('konfekce'), bota_eu: h('bota') || null, jazyky: K.jazykyHodnota(f),
       ridicak: d.querySelector('#u-ridicak').checked, vlastni_auto: d.querySelector('#u-auto').checked, dostupnost: h('dostupnost'), zkusenosti: h('zkusenosti') };
     const profilPrazdny = !o.profil && !profil.vyska_cm && !profil.konfekce && !profil.bota_eu && !profil.jazyky.length && !profil.ridicak && !profil.vlastni_auto && !profil.dostupnost && !profil.zkusenosti;
     f.querySelector('button[type=submit]').disabled = true;

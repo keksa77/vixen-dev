@@ -385,7 +385,7 @@ function vProfil() {
   <form id="f" class="card" novalidate>
    <div class="row">${pole('vyska', 'Výška (cm)', p.vyska_cm ?? '', { typ: 'number', im: 'numeric' })}${pole('bota', 'Bota (EU)', p.bota_eu ?? '', { typ: 'number', im: 'decimal' })}</div>
    ${pole('konfekce', 'Konfekční velikost', '', { select: opt(k, p.konfekce, '—') })}
-   ${pole('jazyky', 'Jazyky', (p.jazyky || []).join(', '), { ph: 'angličtina, němčina' })}
+   ${K.jazykyHtml(p.jazyky || [])}
    ${pole('zkusenosti', 'Zkušenosti', p.zkusenosti || '', { typ: 'textarea' })}
    <label class="chk"><input type="checkbox" id="ridicak" ${p.ridicak ? 'checked' : ''}> Mám řidičák</label>
    <label class="chk"><input type="checkbox" id="auto" ${p.vlastni_auto ? 'checked' : ''}> Mám vlastní auto</label>
@@ -393,6 +393,7 @@ function vProfil() {
    ${oblastHtml(new Set(S.okresy))}
    <button class="btn" type="submit">Uložit profil</button></form>`;
   zapniOblast();
+  K.jazykyZapni(document.getElementById('f'));
   fotkyBlok();
   const kontrola = () => ({
     vyska: val('vyska') && (val('vyska') < 120 || val('vyska') > 220) ? 'Výška 120–220 cm.' : '',
@@ -404,7 +405,7 @@ function vProfil() {
     e.preventDefault(); if (!ukazChyby(kontrola())) return;
     const { error } = await sb.from('osoba_profil').upsert({
       osoba_id: S.osoba.id, vyska_cm: val('vyska') || null, bota_eu: val('bota') || null, konfekce: val('konfekce') || null,
-      jazyky: val('jazyky') ? val('jazyky').split(',').map((x) => x.trim()).filter(Boolean) : [],
+      jazyky: K.jazykyHodnota(e.target),
       zkusenosti: val('zkusenosti') || null, ridicak: val('ridicak'), vlastni_auto: val('auto'), dostupnost: val('dostupnost') || null });
     if (error) return chybaFormu(e.target, chybaText(error));
     const nove = oblastVyber(), stare = S.okresy;

@@ -91,5 +91,23 @@ function vokativ(jmeno) {
   if (/[bdflmnprstvz]$/.test(m)) return j + 'e';            // Jan→Jane, Jakub→Jakube, Michal→Michale, Josef→Josefe
   return j;
 }
-window.K = { vokativ, cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
+// Jazyky: zaškrtávání nabídnutých + „jiné“ s textovým polem (jako výběr okresních měst). Ukládá se pole názvů.
+const JAZYKY = ['angličtina', 'němčina', 'francouzština', 'polština', 'španělština'];
+const escJ = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function jazykyHtml(vybrane = []) {
+  const jine = vybrane.filter((j) => !JAZYKY.includes(j));
+  return `<div class="fld" data-f="jazyky"><label>Jazyky</label><div class="chips">${JAZYKY.map((j) => `<label><input type="checkbox" name="jazyk" value="${j}"${vybrane.includes(j) ? ' checked' : ''}> ${j}</label>`).join('')}
+    <label><input type="checkbox" name="jazyk" value="jine" class="jazyk-jine-chk"${jine.length ? ' checked' : ''}> jiné</label></div>
+    <input class="jazyk-jine${jine.length ? '' : ' hidden'}" style="margin-top:8px" placeholder="doplňte, např. italština, ruština" value="${escJ(jine.join(', '))}"><div class="err"></div></div>`;
+}
+function jazykyZapni(root) {
+  const chk = root.querySelector('.jazyk-jine-chk'), pole = root.querySelector('.jazyk-jine');
+  if (chk) chk.onchange = () => { pole.classList.toggle('hidden', !chk.checked); if (chk.checked) pole.focus(); };
+}
+function jazykyHodnota(root) {
+  const v = [...root.querySelectorAll('input[name=jazyk]:checked')].map((x) => x.value).filter((x) => x !== 'jine');
+  if (root.querySelector('.jazyk-jine-chk')?.checked) v.push(...root.querySelector('.jazyk-jine').value.split(',').map((x) => x.trim()).filter(Boolean));
+  return [...new Set(v)];
+}
+window.K = { jazykyHtml, jazykyZapni, jazykyHodnota, vokativ, cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
 })();
