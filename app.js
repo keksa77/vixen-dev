@@ -551,10 +551,10 @@ function vDokumenty() {
       ${msg('Smlouvu teď kontroluje a podepisuje Vixen. Jakmile ji podepíše, podepíšete ji tady i vy – dáme vám vědět.', 'warn')}
       <details><summary>Náhled smlouvy</summary><div class="doc">${esc(kPodpisu.obsah)}</div></details></div>`;
   else if (kPodpisu) hlavni = `<div class="card"><h2 style="margin-top:0">${esc(kPodpisu.dokument_sablona?.nazev)}</h2>
-      <p class="mute">Za Vixen podepsala <b>${esc(vixen?.jmeno || '')}</b> ${kdyCz(kPodpisu.vixen_podepsano_at)}. Přečtěte si smlouvu – vaše údaje jsou doplněné automaticky.</p>
+      <p class="mute">Za Vixen podepsáno: <b>${esc(vixen?.jmeno || '')}</b> ${kdyCz(kPodpisu.vixen_podepsano_at)}. Přečtěte si smlouvu – vaše údaje jsou doplněné automaticky.</p>
       <div class="doc">${esc(kPodpisu.obsah)}</div>
       <label class="chk"><input type="checkbox" id="precteno"> Smlouvu mám přečtenou a údaje v ní jsou správné.</label>
-      <p class="mute">Po podpisu pošleme podepsané PDF na <b>${esc(S.nastup.email_smlouvy)}</b>. Doručením je smlouva uzavřená; do 7 dnů od ní můžete odstoupit, pokud jste ještě nezačala pracovat.</p>
+      <p class="mute">Po podpisu pošleme podepsané PDF na <b>${esc(S.nastup.email_smlouvy)}</b>. Doručením je smlouva uzavřená; do 7 dnů od ní můžete odstoupit, pokud jste ještě nenastoupili na první akci.</p>
       <div id="m"></div>
       <button class="btn" id="kod" disabled>Podepsat – poslat kód e-mailem</button>
       <div id="zadat" class="hidden">${pole('k', 'Kód z e-mailu (6 číslic)', '', { im: 'numeric', ac: 'one-time-code' })}<button class="btn g" id="podepsat">Podepsat</button></div></div>`;
