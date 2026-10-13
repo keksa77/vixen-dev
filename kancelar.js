@@ -249,6 +249,16 @@ const neoslovovatZn = (o) => (o.neoslovovat ? ' <span class="tag t-r" title="Kan
 const zmenStavDb = (ids, stav, duvod, neoslovovat) => sb.rpc('zmen_stav', { p_osoby: ids, p_stav: stav, p_duvod: sDuvodem(stav) ? duvod || null : null, p_neoslovovat: neoslovovat ?? null });
 // e-mail hostesce (schválení / připomínka) přes funkci hosteska-zprava; vrátí text výsledku
 const ZPRAVA_VYS = { odeslano: 'odesláno', vyvoj_neodeslano: 'VÝVOJ – neodesláno', vynechano: 'vynecháno', chyba: 'chyba' };
+// náhled e-mailu (nic se neposílá) do prvku box; druhé kliknutí náhled zavře
+async function nahledZpravy(o, typ, box) {
+  if (box.innerHTML) { box.innerHTML = ''; return; }
+  box.innerHTML = '<p class="mute">Připravuji náhled…</p>';
+  const { data, error } = await sb.functions.invoke('hosteska-zprava', { body: { osoba_ids: [o.id], typ, osloveni: { [o.id]: K.vokativ(o.jmeno) }, nahled: true } });
+  const v = data?.vysledky?.[0];
+  if (error || data?.chyba || !v) { box.innerHTML = msg('Náhled se nepodařilo připravit: ' + esc(data?.chyba || chyba(error)), 'bad'); return; }
+  box.innerHTML = v.vysledek !== 'nahled' ? msg(`E-mail by neodešel: ${esc(v.zprava)}.`, 'warn')
+    : `<div class="doc nahled-mail"><b>Komu:</b> ${esc(v.komu)}\n<b>Předmět:</b> ${esc(v.predmet)}\n\n${esc(v.text)}</div>${v.zprava ? msg(esc(v.zprava), 'warn') : ''}`;
+}
 async function posliZpravu(osoby, typ) {
   const osloveni = Object.fromEntries(osoby.map((o) => [o.id, K.vokativ(o.jmeno)]));
   const { data, error } = await sb.functions.invoke('hosteska-zprava', { body: { osoba_ids: osoby.map((o) => o.id), typ, osloveni } });
@@ -291,7 +301,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
      </dl>
      <form class="rozh" novalidate>
       <div class="fld" data-f="pozn"><label>Interní poznámka (hosteska ji neuvidí)</label><textarea rows="2" name="pozn" placeholder="Nepovinné – např. odkud se o nás dozvěděla">${esc(o.osoba_poznamka?.text || '')}</textarea><div class="err"></div></div>
-      ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? `<label class="chk"><input type="checkbox" name="mail"${o.neoslovovat ? '' : ' checked'}> <span>Při schválení poslat hostesce e-mail (jak se přihlásit a co doplnit)</span></label>` : ''}
+      ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? `<label class="chk"><input type="checkbox" name="mail"${o.neoslovovat ? '' : ' checked'}> <span>Při schválení poslat hostesce e-mail (jak se přihlásit a co doplnit)</span></label><p class="pozn"><a href="#" class="ukaz-mail">Zobrazit e-mail předem</a></p><div class="mail-box"></div>` : ''}
       <div class="akce">
        ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? '<button type="button" class="btn" data-a="prijata">Schválit</button>' : ''}
        ${o.stav !== 'odmitnuta' ? `<button type="button" class="btn o" data-a="odmitnuta">${o.stav === 'uchazec' ? 'Odmítnout' : 'Vyřadit'}</button>` : ''}
@@ -309,6 +319,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
   $app.querySelectorAll('.prihl').forEach((karta) => {
     const id = karta.dataset.id, form = karta.querySelector('form'), potvrd = karta.querySelector('.potvrd');
     const o = data.find((x) => x.id === id), jmeno = `${o.jmeno} ${o.prijmeni}`;
+    const um = karta.querySelector('.ukaz-mail'); if (um) um.onclick = (e) => { e.preventDefault(); nahledZpravy(o, 'schvaleno', karta.querySelector('.mail-box')); };
     karta.querySelectorAll('button[data-a]').forEach((b) => (b.onclick = () => {
       const novy = b.dataset.a;
       if (novy === 'prijata') return zmenStav(o, novy, form);
@@ -616,7 +627,7 @@ async function vDetailOsoby(id) {
     <button class="btn" type="submit">Uložit</button></form></section>
    <section><h3>Zprávy hostesce</h3>
     ${o.neoslovovat ? '<p class="mute">Neoslovovat – zprávy se neposílají.</p>' : `<div class="akce"><button class="btn o mini" id="z-pripom">Poslat připomínku e-mailem</button>${o.stav === 'prijata' || o.stav === 'aktivni' ? '<button class="btn o mini" id="z-schv">Poslat e-mail o schválení</button>' : ''}</div>
-    <p class="pozn">Připomínka sama vybere, co chybí: přihlášení do aplikace, profil, údaje pro smlouvu, nebo podpis smlouvy. Stejnému člověku odejde nejvýš jednou za 3 dny.</p>`}
+    <p class="pozn">Připomínka sama vybere, co chybí: přihlášení do aplikace, profil, údaje pro smlouvu, nebo podpis smlouvy. Stejnému člověku odejde nejvýš jednou za 3 dny. <a href="#" id="z-nahled">Zobrazit, co by odešlo</a></p><div id="z-nahled-box"></div>`}
     <div id="z-msg"></div><div id="det-zpravy" class="mute">Načítám…</div></section>
    ${S.vedeni || S.tbdb ? '<section><h3>Historie změn</h3><div id="det-hist" class="mute">Načítám…</div></section>' : ''}`;
   d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
@@ -644,6 +655,7 @@ async function vDetailOsoby(id) {
     const r = await posliZpravu([o], typ); d.querySelector('#z-msg').innerHTML = msg(r.text, r.ok ? 'ok' : 'warn'); b.disabled = false; detailZpravy(o);
   }; };
   zpravaBtn('#z-pripom', 'pripominka'); zpravaBtn('#z-schv', 'schvaleno');
+  const zn = d.querySelector('#z-nahled'); if (zn) zn.onclick = (e) => { e.preventDefault(); nahledZpravy(o, 'pripominka', d.querySelector('#z-nahled-box')); };
   detailZpravy(o);
   if (S.smlouvy) detailSmlouva(o);
   if (S.vedeni || S.tbdb) detailHistorie(o);

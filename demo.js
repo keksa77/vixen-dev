@@ -115,6 +115,9 @@ window.fetch = async (vstup, init = {}) => {
     zaznamZmeny(o.id, { ...o }); Object.assign(o, body.p_osoba); db.okres[o.id] = body.p_okresy;
     if (body.p_profil) db.profil[o.id] = { ...(db.profil[o.id] || {}), osoba_id: o.id, ...body.p_profil, vyska_cm: body.p_profil.vyska_cm ? +body.p_profil.vyska_cm : null, bota_eu: body.p_profil.bota_eu ? +body.p_profil.bota_eu : null };
     return odpoved(null); }
+  if (p.endsWith('/functions/v1/hosteska-zprava') && body.nahled) { const o = db.osoba.find((x) => x.id === body.osoba_ids[0]);
+    return odpoved({ vysledky: [{ osoba_id: o.id, vysledek: 'nahled', zprava: 'UKÁZKA – nic se neposílá', komu: o.email, predmet: body.typ === 'schvaleno' ? 'Vixen – vaše přihláška je schválená' : 'Vixen – doplňte prosím svůj profil',
+      text: `Dobrý den, ${body.osloveni[o.id]},\n\n(ukázkový text e-mailu)\n\nDěkujeme,\nkancelář Vixen hostesky` }] }); }
   if (p.endsWith('/functions/v1/hosteska-zprava')) {
     const vysledky = body.osoba_ids.map((id) => { const o = db.osoba.find((x) => x.id === id), k = db.kanc[id] || {};
       const v = k.neoslovovat ? ['vynechano', 'neoslovovat'] : !['prijata', 'aktivni'].includes(o.stav) ? ['vynechano', 'není přijatá ani aktivní'] : ['vyvoj_neodeslano', 'ukázka – nic se neposílá'];
