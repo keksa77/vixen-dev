@@ -105,7 +105,7 @@ function zapniDiktovani() {
         pole.dispatchEvent(new Event('input'));
       };
       rec.onerror = (e) => (info.textContent = e.error === 'not-allowed' || e.error === 'service-not-allowed'
-        ? 'Povolte prosím mikrofon pro tuto stránku.' : e.error === 'no-speech' ? 'Nic jsem neslyšela – zkuste to znovu.' : 'Diktování se přerušilo (' + e.error + ').');
+        ? 'Povolte prosím mikrofon pro tuto stránku.' : e.error === 'no-speech' ? 'Nic nebylo slyšet – zkuste to znovu.' : 'Diktování se přerušilo (' + e.error + ').');
       rec.onend = () => { rec = null; btn.textContent = '🎤 Diktovat'; btn.classList.remove('nahrava'); if (!info.textContent.startsWith('Povol')) info.textContent = 'Text můžete před odesláním upravit.'; };
       rec.start(); btn.textContent = '⏹ Zastavit diktování'; btn.classList.add('nahrava'); info.textContent = 'Poslouchám… mluvte česky.';
     };
@@ -124,7 +124,7 @@ async function vUvod(hlaska) {
      <div class="fld" data-f="typ"><label>Co potřebujete</label><div class="chips typy">
       ${Object.entries(TYP).map(([k, v], i) => `<label><input type="radio" name="typ" value="${k}"${i ? '' : ' checked'}> ${v}</label>`).join('')}</div><div class="err"></div></div>
      <div class="fld" data-f="predmet"><label for="predmet">Předmět</label><input id="predmet" maxlength="120" placeholder="Např. Jak přidat novou kolegyni"><div class="err"></div></div>
-     <div class="fld" data-f="text"><label for="text">Popis</label><textarea id="text" rows="5" placeholder="Napište nebo nadiktujte, co se stalo / co potřebujete. U chyby: kde v aplikaci a co jste dělala."></textarea>${mikrofon('text')}<div class="err"></div></div>
+     <div class="fld" data-f="text"><label for="text">Popis</label><textarea id="text" rows="5" placeholder="Napište nebo nadiktujte, co se stalo / co potřebujete. U chyby: kde v aplikaci to bylo a co se dělo."></textarea>${mikrofon('text')}<div class="err"></div></div>
      <div class="fld" data-f="soubory"><label for="soubory">Přílohy (nepovinné – snímek obrazovky, dokument; max. ${MAX_MB} MB)</label><input id="soubory" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"><div class="err"></div></div>
      <label class="chk"><input type="checkbox" id="spech"> Spěchá</label>
      <button class="btn" type="submit">Odeslat dotaz</button>
@@ -188,7 +188,7 @@ async function menu(aktivni) {
   const [{ count }, { count: dotazy }] = await Promise.all([sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec'),
     sb.from('tiket').select('id', { count: 'exact', head: true }).in('stav', S.tbdb ? ['novy', 'resime'] : ['ceka_na_vas'])]);
   document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', aktivni === 'lide' || aktivni === 'nastenka');
-  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Přihlášky', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
+  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Registrace', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
   return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
@@ -217,7 +217,7 @@ async function vNastenka() {
   try { await nactiLidi(); } catch (e) { $app.innerHTML = (await menu('nastenka')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
   const tym = S.lide.filter((o) => ['prijata', 'aktivni'].includes(o.stav));
   const dlazdice = [
-    ['y', S.lide.filter((o) => o.stav === 'uchazec').length, 'nových přihlášek', () => vPrihlasky()],
+    ['y', S.lide.filter((o) => o.stav === 'uchazec').length, 'nových registrací', () => vPrihlasky()],
     ['r', tym.filter((o) => o.dpp === 'ceka_vixen').length, 'smluv čeká na váš podpis', () => lideFiltr({ dpp: 'vixen' })],
     ['r', tym.filter((o) => o.udaje && !dppOk(o) && o.dpp !== 'ceka_vixen').length, 'bez uzavřené smlouvy (údaje mají)', () => lideFiltr({ udaje: 'ano', dpp: 'ne' })],
     ['y', tym.filter((o) => !o.udaje).length, 'bez údajů pro smlouvu', () => lideFiltr({ udaje: 'ne' })],
@@ -240,11 +240,11 @@ const STAV_O = { uchazec: ['nová', 't-w'], prijata: ['přijatá', 't-ok'], akti
 const ZAJEM = { hosteska: 'hosteska', promoter: 'promotér/ka', jine: 'jiné' };
 const KANAL = { email: 'e-mail', sms: 'SMS', whatsapp: 'WhatsApp', messenger: 'Messenger' };
 // důvod odmítnutí / vyřazení (povinný u stavu odmítnutá a neaktivní) – osoba_kancelar.duvod_vyrazeni
-const DUVOD = { nevyhovuje: 'nevyhovuje požadavkům', nespolehliva: 'nespolehlivá', nema_zajem: 'sama nemá zájem', nereaguje: 'nereaguje',
-  duplicita: 'duplicitní přihláška', pauza: 'pauza (studium, mateřská…)', bez_prace: 'dlouho bez práce', jine: 'jiný důvod (viz poznámka)' };
+const DUVOD = { nevyhovuje: 'nevyhovuje požadavkům', nespolehliva: 'nespolehlivost', nema_zajem: 'nemá zájem', nereaguje: 'nereaguje',
+  duplicita: 'duplicitní registrace', pauza: 'pauza (studium, mateřská…)', bez_prace: 'dlouho bez práce', jine: 'jiný důvod (viz poznámka)' };
 const sDuvodem = (stav) => stav === 'odmitnuta' || stav === 'neaktivni';
 const duvodVolba = (vybrany = '') => `<select class="duvod"><option value="">– vyberte důvod –</option>${Object.entries(DUVOD).map(([k, v]) => `<option value="${k}"${k === vybrany ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
-const neoslovovatZn = (o) => (o.neoslovovat ? ' <span class="tag t-r" title="Kancelář ji nemá oslovovat – hromadné akce ji vynechají">neoslovovat</span>' : '');
+const neoslovovatZn = (o) => (o.neoslovovat ? ' <span class="tag t-r" title="Neoslovovat – hromadné akce a připomínky tohoto člověka vynechají">neoslovovat</span>' : '');
 // změna stavu (i hromadně) – u odmítnuté/neaktivní s důvodem; neoslovovat: true/false/undefined (= beze změny)
 const zmenStavDb = (ids, stav, duvod, neoslovovat) => sb.rpc('zmen_stav', { p_osoby: ids, p_stav: stav, p_duvod: sDuvodem(stav) ? duvod || null : null, p_neoslovovat: neoslovovat ?? null });
 // e-mail hostesce (schválení / připomínka) přes funkci hosteska-zprava; vrátí text výsledku
@@ -300,8 +300,8 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
       <dt>Souhlas</dt><dd>${o.souhlas_gdpr_at ? 'ano, ' + kdy(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd>
      </dl>
      <form class="rozh" novalidate>
-      <div class="fld" data-f="pozn"><label>Interní poznámka (hosteska ji neuvidí)</label><textarea rows="2" name="pozn" placeholder="Nepovinné – např. odkud se o nás dozvěděla">${esc(o.osoba_poznamka?.text || '')}</textarea><div class="err"></div></div>
-      ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? `<label class="chk"><input type="checkbox" name="mail"${o.neoslovovat ? '' : ' checked'}> <span>Při schválení poslat hostesce e-mail (jak se přihlásit a co doplnit)</span></label><p class="pozn"><a href="#" class="ukaz-mail">Zobrazit e-mail předem</a></p><div class="mail-box"></div>` : ''}
+      <div class="fld" data-f="pozn"><label>Interní poznámka (uchazeč ji neuvidí)</label><textarea rows="2" name="pozn" placeholder="Nepovinné – např. odkud o nás ví">${esc(o.osoba_poznamka?.text || '')}</textarea><div class="err"></div></div>
+      ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? `<label class="chk"><input type="checkbox" name="mail"${o.neoslovovat ? '' : ' checked'}> <span>Při schválení poslat e-mail (jak se přihlásit a co doplnit)</span></label><p class="pozn"><a href="#" class="ukaz-mail">Zobrazit e-mail předem</a></p><div class="mail-box"></div>` : ''}
       <div class="akce">
        ${o.stav !== 'prijata' && o.stav !== 'aktivni' ? '<button type="button" class="btn" data-a="prijata">Schválit</button>' : ''}
        ${o.stav !== 'odmitnuta' ? `<button type="button" class="btn o" data-a="odmitnuta">${o.stav === 'uchazec' ? 'Odmítnout' : 'Vyřadit'}</button>` : ''}
@@ -309,10 +309,10 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
       </div>
       <div class="potvrd hidden"></div>
      </form></div>`;
-  $app.innerHTML = `${await menu('prihlasky')}<h1>Přihlášky</h1>${hlaska}
+  $app.innerHTML = `${await menu('prihlasky')}<h1>Registrace</h1>${hlaska}
     <div class="chips filtr">${Object.entries(FILTR).map(([k, v]) => `<label><input type="radio" name="filtr" value="${k}"${k === filtr ? ' checked' : ''}> ${v[0]}</label>`).join('')}</div>
-    ${(data || []).map(karta).join('') || `<p class="mute">${filtr === 'uchazec' ? 'Žádné nové přihlášky.' : 'Nic tu není.'}</p>`}
-    <p class="pozn">Po schválení se hosteska může přihlásit e-mailem z registrace a doplnit profil a údaje pro smlouvu. Pokud je zaškrtnuté, odejde jí při schválení e-mail (ve vývoji jen na adresy TBDB).</p>`;
+    ${(data || []).map(karta).join('') || `<p class="mute">${filtr === 'uchazec' ? 'Žádné nové registrace.' : 'Nic tu není.'}</p>`}
+    <p class="pozn">Po schválení se uchazeč může přihlásit e-mailem z registrace a doplnit profil a údaje pro smlouvu. Pokud je zaškrtnuté, odejde při schválení e-mail (ve vývoji jen na adresy TBDB).</p>`;
   zapniMenu();
   podepisFotky((data || []).flatMap((o) => (o.osoba_foto || []).map((f) => f.cesta))).then(() => $app.querySelectorAll('.prihl img[data-cesta]').forEach((i) => (i.src = S.fotoUrl[i.dataset.cesta] || '')));
   $app.querySelectorAll('input[name=filtr]').forEach((r) => (r.onchange = () => vPrihlasky(r.value)));
@@ -347,7 +347,7 @@ async function zmenStav(o, novy, form, duvod, neoslovovat) {
     if (r.error) return chybaFormu(form, 'Stav je uložený, poznámka ne: ' + chyba(r.error));
   }
   const jm = esc(`${o.jmeno} ${o.prijmeni}`);
-  let text = { prijata: `Přihláška – ${jm}: schváleno ✓ Přihlásí se e-mailem ${esc(o.email)}.`, odmitnuta: `Přihláška – ${jm}: odmítnuto (najdete v Odmítnutých).`, uchazec: `Přihláška – ${jm}: vrácena mezi nové.` }[novy];
+  let text = { prijata: `Registrace – ${jm}: schváleno ✓ Přihlásí se e-mailem ${esc(o.email)}.`, odmitnuta: `Registrace – ${jm}: odmítnuto (najdete v Odmítnutých).`, uchazec: `Registrace – ${jm}: vrácena mezi nové.` }[novy];
   let typ = 'ok';
   if (mail) { const r = await posliZpravu([o], 'schvaleno'); text += ' ' + r.text; if (!r.ok) typ = 'warn'; }
   vPrihlasky(o.stav === 'uchazec' ? 'uchazec' : novy === 'uchazec' ? 'uchazec' : novy === 'prijata' ? 'prijate' : 'odmitnute', msg(text, typ));
@@ -364,7 +364,7 @@ const bezDiakritiky = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g
 const datum = (d) => (d ? new Date(d).toLocaleDateString('cs-CZ') : '');
 // stav DPP z kancelar_lide: ceka_vixen | ceka_hosteska | neodeslano | lhuta | uzavreno | odstoupeno
 const dppOk = (o) => o.dpp === 'lhuta' || o.dpp === 'uzavreno';
-const DPP_TXT = { ceka_vixen: 'čeká na podpis Vixen', ceka_hosteska: 'čeká na podpis hostesky', neodeslano: 'podepsáno, PDF neodešlo', lhuta: 'uzavřeno – běží 7 dní na odstoupení', uzavreno: 'uzavřeno', odstoupeno: 'hosteska odstoupila' };
+const DPP_TXT = { ceka_vixen: 'čeká na podpis Vixen', ceka_hosteska: 'čeká na podpis hostesky', neodeslano: 'podepsáno, PDF neodešlo', lhuta: 'uzavřeno – běží 7 dní na odstoupení', uzavreno: 'uzavřeno', odstoupeno: 'odstoupení od smlouvy' };
 const krajeOsoby = (o) => [...new Set(o.okresy.map((k) => S.cis.okres[k]?.kraj_kod).filter(Boolean))];
 S.fotoUrl = S.fotoUrl || {};
 
@@ -617,13 +617,13 @@ async function vDetailOsoby(id) {
     <dt>Souhlas</dt><dd>${o.souhlas_gdpr_at ? datum(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd></dl></section>
    <section><h3>Profil</h3>${o.ma_profil ? `<dl><dt>Výška</dt><dd>${p.vyska_cm ? p.vyska_cm + ' cm' : '–'}</dd><dt>Konfekce / bota</dt><dd>${esc(p.konfekce || '–')} / ${p.bota_eu || '–'}</dd>
      <dt>Jazyky</dt><dd>${esc((p.jazyky || []).join(', ') || '–')}</dd><dt>Řidičák / auto</dt><dd>${p.ridicak ? 'ano' : 'ne'} / ${p.vlastni_auto ? 'ano' : 'ne'}</dd>
-     <dt>Dostupnost</dt><dd>${esc(p.dostupnost || '–')}</dd><dt>Zkušenosti</dt><dd>${esc(p.zkusenosti || '–')}</dd></dl>` : '<p class="mute">Zatím nevyplnila.</p>'}</section>
+     <dt>Dostupnost</dt><dd>${esc(p.dostupnost || '–')}</dd><dt>Zkušenosti</dt><dd>${esc(p.zkusenosti || '–')}</dd></dl>` : '<p class="mute">Profil zatím chybí.</p>'}</section>
    <section><h3>Smlouva a podklady</h3><div id="det-smlouva"><p class="mute">${S.smlouvy ? 'Načítám…' : `Údaje pro smlouvu: <b>${o.udaje ? 'potvrzené' : 'chybí'}</b> · DPP: <b>${o.dpp ? DPP_TXT[o.dpp] + (o.dpp_at ? ' (' + datum(o.dpp_at) + ')' : '') : 'zatím ne'}</b><br>Podrobnosti vidí jen role Smlouvy.`}</p></div></section>
    <section><h3>Stav a poznámka</h3><form id="det-f" novalidate>
     <div class="fld"><label>Stav</label><select id="det-stav">${Object.entries(STAV_O).map(([k, v]) => `<option value="${k}"${k === o.stav ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></div>
     <div class="fld${sDuvodem(o.stav) ? '' : ' hidden'}" id="det-duvod" data-f="duvod"><label>Důvod odmítnutí / vyřazení</label>${duvodVolba(o.duvod)}<div class="err"></div></div>
-    <label class="chk"><input type="checkbox" id="det-neosl"${o.neoslovovat ? ' checked' : ''}> <span>Neoslovovat – hromadné akce a připomínky ji vynechají</span></label>
-    <div class="fld"><label>Interní poznámka (hosteska ji neuvidí)</label><textarea id="det-pozn" rows="3">${esc(o.pozn)}</textarea></div>
+    <label class="chk"><input type="checkbox" id="det-neosl"${o.neoslovovat ? ' checked' : ''}> <span>Neoslovovat – hromadné akce a připomínky tohoto člověka vynechají</span></label>
+    <div class="fld"><label>Interní poznámka (uchazeč ji neuvidí)</label><textarea id="det-pozn" rows="3">${esc(o.pozn)}</textarea></div>
     <button class="btn" type="submit">Uložit</button></form></section>
    <section><h3>Zprávy hostesce</h3>
     ${o.neoslovovat ? '<p class="mute">Neoslovovat – zprávy se neposílají.</p>' : `<div class="akce"><button class="btn o mini" id="z-pripom">Poslat připomínku e-mailem</button>${o.stav === 'prijata' || o.stav === 'aktivni' ? '<button class="btn o mini" id="z-schv">Poslat e-mail o schválení</button>' : ''}</div>
@@ -661,12 +661,12 @@ async function vDetailOsoby(id) {
   if (S.vedeni || S.tbdb) detailHistorie(o);
 }
 
-const ZPRAVA_TYP = { schvaleno: 'schválení přihlášky', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
+const ZPRAVA_TYP = { schvaleno: 'schválení registrace', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
 async function detailZpravy(o) {
   const box = document.getElementById('det-zpravy'); if (!box) return;
   const { data, error } = await sb.from('osoba_zprava').select('typ,vysledek,chyba,adresat,vytvoreno').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }).limit(10);
   if (error) { box.textContent = 'Zprávy se nepodařilo načíst.'; return; }
-  box.innerHTML = (data || []).length ? `<ul class="hist">${data.map((z) => `<li><b>${new Date(z.vytvoreno).toLocaleString('cs-CZ')}</b> – ${esc(ZPRAVA_TYP[z.typ] || z.typ)}: ${esc(ZPRAVA_VYS[z.vysledek] || z.vysledek)}${z.chyba ? ' (' + esc(z.chyba) + ')' : ''}</li>`).join('')}</ul>` : 'Zatím jí kancelář nic neposlala.';
+  box.innerHTML = (data || []).length ? `<ul class="hist">${data.map((z) => `<li><b>${new Date(z.vytvoreno).toLocaleString('cs-CZ')}</b> – ${esc(ZPRAVA_TYP[z.typ] || z.typ)}: ${esc(ZPRAVA_VYS[z.vysledek] || z.vysledek)}${z.chyba ? ' (' + esc(z.chyba) + ')' : ''}</li>`).join('')}</ul>` : 'Zatím žádné zprávy.';
 }
 
 // ---------- úprava údajů člověka kanceláří ----------
@@ -686,7 +686,7 @@ function vUpravOsobu(o) {
     <section><h3>Kontakt a bydliště</h3>
      ${pole('jmeno', 'Jméno', o.jmeno)}${pole('prijmeni', 'Příjmení', o.prijmeni)}
      ${pole('telefon', 'Telefon', o.telefon, 'tel')}${pole('email', 'E-mail', o.email, 'email')}
-     ${o.auth_user_id ? '<p class="pozn">Hosteska už má účet: když změníte e-mail, přihlašuje se dál původním e-mailem. Změnu přihlašovacího e-mailu zařídí TBDB.</p>' : ''}
+     ${o.auth_user_id ? '<p class="pozn">Účet už existuje: když změníte e-mail, přihlašuje se dál původním e-mailem. Změnu přihlašovacího e-mailu zařídí TBDB.</p>' : ''}
      <div class="fld" data-f="kraj"><label for="u-kraj">Kraj bydliště</label><select id="u-kraj">${Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs')).map(([k, v]) => `<option value="${k}"${k === o.kraj_kod ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select><div class="err"></div></div>
      ${pole('obec', 'Obec', o.obec)}
      <div class="fld" data-f="zajem"><label>Zájem</label>${zaskrt('zajem', ZAJEM, o.zajem)}<div class="err"></div></div>
@@ -753,11 +753,11 @@ async function detailSmlouva(o) {
      <dt>Pojišťovna</dt><dd>${esc(S.cis.zp?.[n.zdravotni_pojistovna] || n.zdravotni_pojistovna || '–')}</dd>
      <dt>Účet</dt><dd><span class="citl" data-plne="${esc(ucet)}">${esc(skryj(ucet))}</span></dd></dl>
      <button class="btn o mini" id="ukaz-citl">Zobrazit rodné číslo a účet</button>`
-    : '<p class="mute">Údaje pro smlouvu zatím nevyplnila.</p>';
+    : '<p class="mute">Údaje pro smlouvu zatím chybí.</p>';
   const ukaz = document.getElementById('ukaz-citl');
   if (ukaz) ukaz.onclick = () => { box.querySelectorAll('.citl').forEach((s) => (s.textContent = s.dataset.plne)); ukaz.remove(); };
   const kdy = (t) => (t ? new Date(t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
-  const stav = (x) => x.stav === 'zruseno' ? ['zrušeno', 't-b'] : x.odstoupeno_at ? ['hosteska odstoupila ' + datum(x.odstoupeno_at), 't-b']
+  const stav = (x) => x.stav === 'zruseno' ? ['zrušeno', 't-b'] : x.odstoupeno_at ? ['odstoupení od smlouvy ' + datum(x.odstoupeno_at), 't-b']
     : x.stav === 'k_podpisu' ? (x.vixen_podepsano_at ? ['čeká na podpis hostesky', 't-w'] : ['čeká na podpis Vixen', 't-r'])
     : !x.odeslano_at ? ['podepsáno – PDF neodešlo', 't-w']
     : new Date(x.odstoupeni_do) > new Date() ? ['uzavřeno · odstoupení možné do ' + datum(x.odstoupeni_do), 't-ok'] : ['uzavřeno', 't-ok'];
@@ -778,7 +778,7 @@ async function detailSmlouva(o) {
     const pv = r.querySelector('.podp-v');
     if (pv) pv.onclick = () => {
       r.querySelector('.m3').innerHTML = `<div class="podpis-v"><div class="doc">${esc(x.obsah || '')}</div>
-        <label class="chk"><input type="checkbox" class="pv-ok"><span>Zkontrolovala jsem text a údaje a podepisuji smlouvu za zaměstnavatele jako <b>${esc(S.podpisuji.jmeno)}</b> – ${esc(S.podpisuji.opravneni)}.</span></label>
+        <label class="chk"><input type="checkbox" class="pv-ok"><span>Text a údaje mám zkontrolované a podepisuji smlouvu za zaměstnavatele jako <b>${esc(S.podpisuji.jmeno)}</b> – ${esc(S.podpisuji.opravneni)}.</span></label>
         <button class="btn g mini pv-go" disabled>Podepsat za Vixen</button> <button class="btn o mini pv-zrus">Zrušit</button></div>`;
       pv.disabled = true;
       r.querySelector('.pv-ok').onchange = (e) => (r.querySelector('.pv-go').disabled = !e.target.checked);

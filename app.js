@@ -133,7 +133,7 @@ document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => ukaz(
 
 function vUvod() {
   $app.innerHTML = `<h1>Vítejte ve Vixen</h1><p class="mute">Hostesky a promotéři – vše k brigádám na jednom místě.</p>
-   <button class="btn" id="b1">Chci se zaregistrovat</button><button class="btn o" id="b2">Už jsem registrovaná – přihlásit</button>`;
+   <button class="btn" id="b1">Chci se zaregistrovat</button><button class="btn o" id="b2">Už mám registraci – přihlásit</button>`;
   document.getElementById('b1').onclick = vRegistrace;
   document.getElementById('b2').onclick = vPrihlaseni;
 }
@@ -160,7 +160,7 @@ function vRegistrace() {
      <label><input type="checkbox" name="kanal" value="whatsapp"> WhatsApp</label></div><div class="err"></div></div>
    <div class="fld" data-f="gdpr"><label class="chk"><input type="checkbox" id="gdpr"> <span>Souhlasím se zpracováním osobních údajů pro účely spolupráce s Vixen. <span class="mute">(text souhlasu dodá Vixen – DOPLNIT)</span></span></label><div class="err"></div></div>
    <button class="btn" type="submit">Odeslat registraci</button></form>
-   <p class="mute" style="text-align:center"><a href="#" id="zpet">Už jsem registrovaná – přihlásit</a></p>`;
+   <p class="mute" style="text-align:center"><a href="#" id="zpet">Už mám registraci – přihlásit</a></p>`;
   document.getElementById('zpet').onclick = (e) => { e.preventDefault(); vPrihlaseni(); };
   zapniOblast();
   S.regFotky = [];
@@ -433,7 +433,7 @@ function vNastup(predvypln) {
    <div class="fld" data-f="souhlas_sml"><label class="chk"><input type="checkbox" id="souhlas_sml" ${n.email_smlouvy_souhlas_at ? 'checked' : ''}> ${SOUHLAS_SML}</label><div class="err"></div></div>
    <h2>Ještě dvě otázky</h2>
    <label class="chk"><input type="checkbox" id="duchod" ${n.predcasny_duchod ? 'checked' : ''}> Pobírám předčasný starobní důchod</label>
-   <label class="chk"><input type="checkbox" id="up" ${n.vedena_na_up ? 'checked' : ''}> Jsem vedená na úřadu práce</label>
+   <label class="chk"><input type="checkbox" id="up" ${n.vedena_na_up ? 'checked' : ''}> Jsem v evidenci úřadu práce</label>
    <button class="btn" type="submit">Pokračovat ke kontrole</button></form>`;
 
   const prepni = () => {
@@ -553,7 +553,7 @@ function vDokumenty() {
   else if (kPodpisu) hlavni = `<div class="card"><h2 style="margin-top:0">${esc(kPodpisu.dokument_sablona?.nazev)}</h2>
       <p class="mute">Za Vixen podepsala <b>${esc(vixen?.jmeno || '')}</b> ${kdyCz(kPodpisu.vixen_podepsano_at)}. Přečtěte si smlouvu – vaše údaje jsou doplněné automaticky.</p>
       <div class="doc">${esc(kPodpisu.obsah)}</div>
-      <label class="chk"><input type="checkbox" id="precteno"> Smlouvu jsem přečetla a údaje v ní jsou správné.</label>
+      <label class="chk"><input type="checkbox" id="precteno"> Smlouvu mám přečtenou a údaje v ní jsou správné.</label>
       <p class="mute">Po podpisu pošleme podepsané PDF na <b>${esc(S.nastup.email_smlouvy)}</b>. Doručením je smlouva uzavřená; do 7 dnů od ní můžete odstoupit, pokud jste ještě nezačala pracovat.</p>
       <div id="m"></div>
       <button class="btn" id="kod" disabled>Podepsat – poslat kód e-mailem</button>
