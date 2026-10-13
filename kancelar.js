@@ -74,7 +74,9 @@ async function poPrihlaseni() {
   if (S.podpisuji?.do_ && new Date(S.podpisuji.do_) < new Date()) S.podpisuji = null;
   S.jmeno = (user.user_metadata && user.user_metadata.jmeno) || user.email.split('@')[0];
   if (S.tbdb) S.jmeno += ' (TBDB)';
-  document.getElementById('kdo').textContent = S.jmeno;
+  const kdo = document.getElementById('kdo');
+  kdo.textContent = `${user.email} · ${S.tbdb ? 'TBDB' : S.vedeni ? 'vedení' : 'kancelář'}${S.podpisuji ? ' · podepisuje za Vixen' : ''}`;
+  kdo.title = 'Přihlášený účet';
   S.nabor ? vLide() : vUvod();   // úvodní obrazovka kanceláře = Lidé
 }
 
