@@ -131,9 +131,19 @@ sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.osoba) poPrihla
 document.getElementById('odhlasit').onclick = async () => { await sb.auth.signOut(); location.hash = ''; location.reload(); };
 document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => ukaz(b.dataset.v));
 
+const IKONA = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const VYHODY = [
+  [IKONA('<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M8 14h3"/>'), 'Pracujete, kdy chcete', 'Akce si vybíráte podle svého času.'],
+  [IKONA('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'), 'Akce blízko vás', 'Uvedete kraje a města, kam můžete jezdit.'],
+  [IKONA('<rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10 18.5h4M9.5 8.5l2 2 3.5-3.5"/>'), 'Vše v telefonu', 'Smlouvu podepíšete kódem, bez papírů.'],
+];
 function vUvod() {
-  $app.innerHTML = `<h1>Vítejte ve Vixen</h1><p class="mute">Hostesky a promotéři – vše k brigádám na jednom místě.</p>
-   <button class="btn" id="b1">Chci se zaregistrovat</button><button class="btn o" id="b2">Už mám registraci – přihlásit</button>`;
+  $app.innerHTML = `<section class="hero"><div class="linka"></div><div class="nad">Hostesky · modelky · promotéři</div>
+    <h1>Přidejte se k týmu Vixen</h1>
+    <p>Veletrhy, koncerty, ochutnávky, firemní akce. Brigády po celé republice – kdy se vám to hodí.</p>
+    <button class="btn" id="b1">Chci se zaregistrovat</button><button class="btn o" id="b2">Už mám registraci – přihlásit</button></section>
+   <div class="vyhody">${VYHODY.map(([ikona, t, p]) => `<div>${ikona}<p style="margin:0"><b>${t}</b><span>${p}</span></p></div>`).join('')}</div>
+   <p class="mute" style="text-align:center">Registrace zabere 2 minuty. Údaje pro smlouvu až před první akcí.</p>`;
   document.getElementById('b1').onclick = vRegistrace;
   document.getElementById('b2').onclick = vPrihlaseni;
 }
@@ -141,15 +151,20 @@ function vUvod() {
 // ---------- krok 1: registrace ----------
 function vRegistrace() {
   location.hash = 'registrace';
-  $app.innerHTML = `<h1>Registrace</h1><p class="mute">Zabere to 2 minuty. Údaje pro smlouvu budeme chtít až před první akcí.</p>
+  $app.innerHTML = `<section class="hero mala"><div class="linka"></div><div class="nad">Registrace</div><h1>Přidejte se k nám</h1>
+    <p>Zabere to 2 minuty. Údaje pro smlouvu budeme chtít až před první akcí.</p></section>
   <form id="f" novalidate class="card">
+   <div class="oddil"><i>1</i>Kontakt</div>
    <div class="row">${pole('jmeno', 'Jméno', '', { ac: 'given-name' })}${pole('prijmeni', 'Příjmení', '', { ac: 'family-name' })}</div>
    ${pole('telefon', 'Telefon', '', { typ: 'tel', ac: 'tel', ph: '777 123 456', im: 'tel' })}
    ${pole('email', 'E-mail', '', { typ: 'email', ac: 'email', ph: 'jana@seznam.cz', hint: 'Na tento e-mail se budete přihlašovat.' })}
    ${pole('obec', 'Kde bydlíte (obec / město)', '', { ac: 'address-level2' })}
-   <div class="fld" data-f="fotky"><label>Fotky (1–3) – portrét nebo postava</label><div class="fotky" id="reg-fotky"></div><div class="err"></div>
+   <div class="oddil"><i>2</i>Fotky</div>
+   <div class="fld" data-f="fotky"><label>1–3 fotky – portrét nebo postava</label><div class="fotky" id="reg-fotky"></div><div class="err"></div>
      <div class="hint">Fotka se zmenší přímo v telefonu. Uvidí ji jen kancelář Vixen.</div></div>
+   <div class="oddil"><i>3</i>Místa práce</div>
    ${oblastHtml(null)}
+   <div class="oddil"><i>4</i>Práce a kontakt</div>
    <div class="fld" data-f="zajem"><label>Mám zájem o</label><div class="chips">
      <label><input type="checkbox" name="zajem" value="hosteska" checked> hosteska</label>
      <label><input type="checkbox" name="zajem" value="promoter"> promotér/ka</label>
