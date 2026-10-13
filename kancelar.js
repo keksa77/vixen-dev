@@ -277,7 +277,8 @@ function mistaText(kody) {
   for (const k of kody) { const o = S.cis.okres[k]; const kr = o ? S.cis.kraj[o.kraj_kod] || o.kraj_kod : '?'; (po[kr] = po[kr] || []).push(o ? o.mesto : k); }
   return Object.entries(po).map(([kr, m]) => `<b>${esc(kr)}:</b> ${m.map(esc).join(', ')}`).join('<br>') || '<span class="mute">neuvedeno</span>';
 }
-// Registrace: záložky s počty, kompaktní seznam (nejdéle čekající nahoře), detail vybrané registrace vedle, hromadné schválení / odmítnutí
+// Registrace: záložky s počty, kompaktní seznam (nejdéle čekající nahoře), detail vybrané registrace vedle, hromadné odmítnutí.
+// Schvaluje se vždy jednotlivě v detailu (záměrně – každého spolupracovníka posoudit).
 const REG = { razeni: 1, hledat: '', vybrano: null, vyber: new Set() };
 const dniOd = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
 const cekaZn = (o) => { const n = dniOd(o.vytvoreno); return `<span class="ceka ${n <= 2 ? 'ok' : n <= 7 ? 'wa' : 'no'}" title="Registrace ${kdy(o.vytvoreno)}">${n === 0 ? 'dnes' : n === 1 ? '1 den' : n < 5 ? n + ' dny' : n + ' dní'}</span>`; };
@@ -300,7 +301,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
     <input type="search" id="reg-hledat" placeholder="hledat jméno, telefon, e-mail" value="${esc(REG.hledat)}"></div>${hlaska}
    <div class="reg-obal"><div class="reg-seznam"><div id="reg-hrom" class="hromadne hidden"></div><div class="tab-obal"><table class="lide-tab reg-tab"><thead><tr>
      <th class="vyb-sl"><input type="checkbox" id="reg-vse" title="Vybrat vše"></th><th></th><th>Jméno · kraj · zájem</th>
-     <th class="raz" id="reg-raz">${filtr === 'uchazec' ? 'Čeká' : 'Registrace'}<i></i></th>${filtr === 'uchazec' ? '<th class="nw">Rychle</th>' : '<th>Stav</th>'}</tr></thead><tbody id="reg-telo"></tbody></table></div>
+     <th class="raz" id="reg-raz">${filtr === 'uchazec' ? 'Čeká' : 'Registrace'}<i></i></th>${filtr === 'uchazec' ? '' : '<th>Stav</th>'}</tr></thead><tbody id="reg-telo"></tbody></table></div>
      <p class="pozn">Po schválení se uchazeč může přihlásit e-mailem z registrace a doplnit profil a údaje pro smlouvu. E-mail o schválení odejde, pokud je zaškrtnutý (ve vývoji jen na adresy TBDB).</p></div>
     <div class="reg-detail" id="reg-detail"></div></div>`;
   zapniMenu();
@@ -324,15 +325,13 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
         <td>${o.fotky[0] ? `<span class="foto" data-cesta="${esc(o.fotky[0])}"><img alt=""></span>` : `<span class="foto bez">${inicialy(o)}</span>`}</td>
         <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}<small>${esc([kr.slice(0, 2).join(', ') + (kr.length > 2 ? ' +' + (kr.length - 2) : ''), (o.zajem || []).map((z) => ZAJEM[z] || z).join(', ')].filter(Boolean).join(' · '))}</small></td>
         <td class="nw">${filtr === 'uchazec' ? cekaZn(o) : `${datum(o.vytvoreno)}<small>změna ${datum(o.zmeneno)}</small>`}</td>
-        <td class="nw">${filtr === 'uchazec' ? `<button class="ik ok" data-q="prijata" title="Schválit (pošle e-mail, pokud je v detailu zaškrtnutý)" aria-label="Schválit">✓</button><button class="ik no" data-q="odmitnuta" title="Odmítnout" aria-label="Odmítnout">✕</button>`
-          : `<span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span>${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}`}</td></tr>`; }).join('')
+        ${filtr === 'uchazec' ? '' : `<td class="nw"><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span>${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>`}</tr>`; }).join('')
       || `<tr><td colspan="5" class="prazdno">${REG.hledat ? 'Hledání nic nenašlo.' : filtr === 'uchazec' ? 'Žádné nové registrace.' : 'Nic tu není.'}</td></tr>`;
     podepisFotky(l.map((o) => o.fotky[0]).filter(Boolean)).then(() => telo.querySelectorAll('.foto[data-cesta] img').forEach((i) => (i.src = S.fotoUrl[i.parentElement.dataset.cesta] || '')));
     telo.querySelectorAll('tr[data-id]').forEach((tr) => (tr.onclick = (e) => {
       const id = tr.dataset.id;
       if (e.target.classList.contains('vyb')) { e.target.checked ? REG.vyber.add(id) : REG.vyber.delete(id); tr.classList.toggle('vybran', e.target.checked); return hromadneReg(); }
       REG.vybrano = id; telo.querySelectorAll('tr.on').forEach((x) => x.classList.remove('on')); tr.classList.add('on'); detail();
-      const q = e.target.dataset.q; if (q) document.querySelector(`#reg-detail button[data-a=${q}]`)?.click();
       if (innerWidth <= 900) document.getElementById('reg-detail').scrollIntoView({ behavior: 'smooth' });
     }));
     document.getElementById('reg-vse').checked = l.length > 0 && l.every((o) => REG.vyber.has(o.id));
@@ -390,17 +389,10 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
     if (!osoby.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
     el.classList.remove('hidden');
     el.innerHTML = `<b>Vybráno ${osoby.length}</b>
-      ${filtr !== 'prijate' ? `<button class="btn mini" data-h="schv">Schválit vybrané</button><label class="chk mini"><input type="checkbox" id="reg-hmail" checked> <span>s e-mailem</span></label>` : ''}
       ${filtr !== 'odmitnute' ? `<button class="btn o mini" data-h="odm">${filtr === 'uchazec' ? 'Odmítnout' : 'Vyřadit'} vybrané</button>` : ''}
       <button class="btn o mini" data-h="zrus">Zrušit výběr</button><span id="reg-hinfo" class="mute"></span>`;
     const info = (t) => (document.getElementById('reg-hinfo').textContent = t);
     el.querySelector('[data-h=zrus]').onclick = () => { REG.vyber.clear(); seznam(); };
-    const schv = el.querySelector('[data-h=schv]');
-    if (schv) schv.onclick = async () => { schv.disabled = true; info('Schvaluji…');
-      const { error } = await zmenStavDb(osoby.map((o) => o.id), 'prijata'); if (error) { schv.disabled = false; return info(chyba(error)); }
-      let t = `Schváleno ${osoby.length}.`;
-      if (document.getElementById('reg-hmail').checked) { const komu = osoby.filter((o) => !o.neoslovovat); if (komu.length) t += ' ' + (await posliZpravu(komu, 'schvaleno')).text; }
-      vPrihlasky(filtr, msg(t)); };
     const odm = el.querySelector('[data-h=odm]');
     if (odm) odm.onclick = () => {
       el.querySelector('.potvrd-h')?.remove();
