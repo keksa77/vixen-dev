@@ -191,6 +191,22 @@ async function menu(aktivni) {
 }
 function zapniMenu() {
   $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, dotazy: vUvod })[b.dataset.v]()));
+  horniPosuvniky();
+}
+
+// Široké tabulky: vodorovný posuvník i nad tabulkou (synchronizovaný se spodním), jen když se tabulka nevejde.
+function horniPosuvniky() {
+  $app.querySelectorAll('.tab-obal').forEach((obal) => {
+    if (obal.previousElementSibling?.classList.contains('posuv-horni')) return;
+    const horni = document.createElement('div'); horni.className = 'posuv-horni'; horni.innerHTML = '<div></div>';
+    obal.before(horni);
+    const sirka = () => { horni.firstChild.style.width = obal.scrollWidth + 'px'; horni.classList.toggle('hidden', obal.scrollWidth <= obal.clientWidth + 1); };
+    const prenes = (z, na) => () => { if (Math.abs(na.scrollLeft - z.scrollLeft) > 1) na.scrollLeft = z.scrollLeft; };
+    horni.addEventListener('scroll', prenes(horni, obal));
+    obal.addEventListener('scroll', prenes(obal, horni));
+    new ResizeObserver(sirka).observe(obal); if (obal.firstElementChild) new ResizeObserver(sirka).observe(obal.firstElementChild);
+    sirka();
+  });
 }
 
 // ---------- NÁSTĚNKA: „Dnes je potřeba“ ----------
