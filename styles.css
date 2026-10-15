@@ -132,3 +132,8 @@ body.verejna{--gold:#b39446;--gold-d:#8c7330;--zlata:#c4a655;--noc:#12101b;font-
 .oddil i{font-style:normal;font-family:Montserrat,sans-serif;width:26px;height:26px;border-radius:50%;background:var(--noc);color:var(--zlata);font-size:13px;display:flex;align-items:center;justify-content:center}
 .oddil:first-child{margin-top:4px}
 @media(min-width:600px){.hero{margin:0 0 22px;border-radius:6px}.vyhody{grid-template-columns:1fr 1fr 1fr}.vyhody div{flex-direction:column}}
+/* zástupce na ploše telefonu */
+.plocha{display:flex;gap:12px;align-items:flex-start}.plocha img{border-radius:12px;flex:none}
+.plocha b.nadp{display:block;font-family:'Playfair Display',Georgia,serif;font-size:16.5px}.plocha span{color:var(--mute);font-size:14px}
+.plocha-tl{display:flex;gap:8px;margin-top:4px}.plocha-tl .btn{margin-top:6px;padding:10px 12px;font-size:12.5px}
+.verejna .hlava{padding-top:env(safe-area-inset-top);background:var(--noc)}

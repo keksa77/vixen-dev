@@ -320,6 +320,25 @@ function navStav() {
     b.querySelector('i').textContent = x.hotovo ? '✓' : !ok ? '🔒' : { profil: '3', nastup: '4', dokumenty: '5' }[b.dataset.v];
   });
 }
+// zástupce na ploše telefonu: Android nabídne instalaci sám (beforeinstallprompt), iPhone jen ručně přes Sdílet
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.instalace = e; });
+function plochaKarta() {
+  const naPlose = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  let skryto = false; try { skryto = localStorage.getItem('vixen_plocha_skryto') === '1'; } catch {}
+  if (naPlose || skryto) return '';
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const navod = ios ? 'V Safari klepněte dole na <b>Sdílet</b> (čtvereček se šipkou) a pak na <b>Přidat na plochu</b>.'
+    : S.instalace ? 'Jedním klepnutím si přidáte ikonu Vixen na plochu a aplikaci pak otevřete jako každou jinou.'
+    : 'V prohlížeči otevřete nabídku <b>⋮</b> a zvolte <b>Přidat na plochu</b> (nebo <b>Nainstalovat aplikaci</b>).';
+  return `<div class="card plocha"><img src="ikony/ikona-192.png" alt="" width="52" height="52"><div><b class="nadp">Vixen na ploše telefonu</b><span>${navod}</span>
+    <div class="plocha-tl">${!ios && S.instalace ? '<button class="btn" id="plocha-pridat">Přidat na plochu</button>' : ''}<button class="btn o" id="plocha-skryt">Teď ne</button></div></div></div>`;
+}
+function zapniPlochu() {
+  const pr = document.getElementById('plocha-pridat');
+  if (pr) pr.onclick = async () => { S.instalace.prompt(); await S.instalace.userChoice; S.instalace = null; document.querySelector('.plocha')?.remove(); };
+  const sk = document.getElementById('plocha-skryt');
+  if (sk) sk.onclick = () => { try { localStorage.setItem('vixen_plocha_skryto', '1'); } catch {} document.querySelector('.plocha')?.remove(); };
+}
 function vPrehled() {
   const k = kroky(), dalsi = k.find((x) => !x.hotovo), hotovych = k.filter((x) => x.hotovo).length;
   const odmitnuta = S.osoba.stav === 'odmitnuta';
@@ -333,11 +352,13 @@ function vPrehled() {
    <p class="mute">Vaše cesta k první akci – hotovo ${hotovych} z ${k.length}</p>
    <div class="prubeh"><div style="width:${Math.round((hotovych / k.length) * 100)}%"></div></div>
    ${ted}
+   ${plochaKarta()}
    <ol class="cesta">${k.map((x, i) => `<li class="${stav(x)}"${x.v && schvalena() ? ` data-v="${x.v}"` : ''}>
      <span class="c">${x.hotovo ? '✓' : i + 1}</span>
      <span class="t"><b>${esc(x.t)}<span class="kdo ${x.kdo === 'vy' ? 'vy' : 'kanc'}">${x.kdo === 'vy' ? 'vy' : 'kancelář'}</span></b><small>${esc(x.popis)}</small></span></li>`).join('')}</ol>`;
   const tl = document.getElementById('dal'); if (tl) tl.onclick = () => ukaz(dalsi.v);
   $app.querySelectorAll('.cesta li[data-v]').forEach((el) => (el.onclick = () => ukaz(el.dataset.v)));
+  zapniPlochu();
 }
 
 
