@@ -175,11 +175,12 @@ function vRegistrace() {
      <label><input type="checkbox" name="kanal" value="sms" checked> SMS</label>
      <label><input type="checkbox" name="kanal" value="whatsapp"> WhatsApp</label></div><div class="err"></div></div>
    <div class="fld" data-f="gdpr"><label class="chk"><input type="checkbox" id="gdpr"> <span>Souhlasím se zpracováním osobních údajů pro účely spolupráce s Vixen. <span class="mute">(text souhlasu dodá Vixen – DOPLNIT)</span></span></label><div class="err"></div></div>
+   <div class="past" aria-hidden="true"><label>Web <input id="web" name="web" tabindex="-1" autocomplete="off"></label></div>
    <button class="btn" type="submit">Odeslat registraci</button></form>
    <p class="mute" style="text-align:center"><a href="#" id="zpet">Už mám registraci – přihlásit</a></p>`;
   document.getElementById('zpet').onclick = (e) => { e.preventDefault(); vPrihlaseni(); };
   zapniOblast();
-  S.regFotky = [];
+  S.regFotky = []; const zacatek = Date.now();   // ochrana proti robotům: doba vyplnění + skryté pole „web“
   const kresliRegFotky = () => {
     const box = document.getElementById('reg-fotky');
     box.innerHTML = S.regFotky.map((f, i) => `<figure><img src="${f.url}" alt="Fotka ${i + 1}"><button type="button" class="smaz" data-i="${i}" title="Odebrat">✕</button></figure>`).join('')
@@ -217,7 +218,8 @@ function vRegistrace() {
     }
     const { error } = await sb.rpc('registrace', { p: { fotky,
       jmeno: val('jmeno'), prijmeni: val('prijmeni'), telefon: K.telefonNormalizuj(val('telefon')), email: val('email').toLowerCase(),
-      okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze } });
+      okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze,
+      web: document.getElementById('web').value, cas_ms: Date.now() - zacatek } });
     if (error) {
       b.disabled = false; b.textContent = 'Odeslat registraci';
       // duplicita: označit jen to pole, které je obsazené (telefon / e-mail); starší hláška bez určení = obě

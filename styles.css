@@ -137,3 +137,6 @@ body.verejna{--gold:#b39446;--gold-d:#8c7330;--zlata:#c4a655;--noc:#12101b;font-
 .plocha b.nadp{display:block;font-family:'Playfair Display',Georgia,serif;font-size:16.5px}.plocha span{color:var(--mute);font-size:14px}
 .plocha-tl{display:flex;gap:8px;margin-top:4px}.plocha-tl .btn{margin-top:6px;padding:10px 12px;font-size:12.5px}
 .verejna .hlava{padding-top:env(safe-area-inset-top);background:var(--noc)}
+
+/* ochrana registrace: pole pro roboty, člověk ho nevidí */
+.past{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
