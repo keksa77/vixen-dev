@@ -176,3 +176,6 @@ body.verejna{--gold:#b39446;--gold-d:#8c7330;--zlata:#c4a655;--noc:#12101b;font-
 .hromadne .wa-panel .akce .btn{width:auto}
 .wa-tab b{color:var(--ink)}
 .hromadne .wa-panel .mute{color:var(--mute)}.hromadne .wa-panel .wa-hotovo .wa-stav{color:var(--ok);font-weight:600}
+/* navádění k instalaci (27. 10. 2026) */
+.plocha.mala{padding:10px 12px}.plocha.mala img{width:36px;height:36px}.plocha.mala span{display:none}
+ol.navod{padding-left:22px;margin:4px 0 14px}ol.navod li{margin:0 0 12px;line-height:1.45}

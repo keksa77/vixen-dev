@@ -244,8 +244,10 @@ function vRegistrace() {
       chybaFormu(e.target, chybaText(error)); return;
     }
     $app.innerHTML = `<h1>Děkujeme!</h1>${msg('Registrace dorazila ✓')}<p>Přihlásíte se e-mailem <b>${esc(val('email') || '')}</b> – heslo není potřeba. Nabídky akcí pak uvidíte v aplikaci. Údaje pro smlouvu budeme chtít až před vaší první akcí.</p>
+      ${naPlose() ? '' : `<div class="card plocha"><img src="ikony/ikona-192.png" alt="" width="52" height="52"><div><b class="nadp">Přidejte si Vixen na plochu telefonu</b><span>${PLOCHA_DUVOD}</span><div class="plocha-tl"><button class="btn" id="plocha-navod">${!zarizeni().ios && S.instalace ? 'Přidat na plochu' : 'Jak na to (1 minuta)'}</button></div></div></div>`}
       <button class="btn o" id="pp">Přihlásit</button>`;
     document.getElementById('pp').onclick = vPrihlaseni;
+    zapniPlochu();
   };
 }
 
@@ -315,7 +317,7 @@ function ukaz(v) {
   S.view = v;
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
   navStav();
-  ({ prehled: vPrehled, profil: vProfil, forma: vForma, nastup: vNastup, dokumenty: vDokumenty })[v]();
+  ({ prehled: vPrehled, profil: vProfil, forma: vForma, nastup: vNastup, dokumenty: vDokumenty, instalace: vInstalace })[v]();
   window.scrollTo(0, 0);
 }
 const schvalena = () => S.osoba && S.osoba.stav !== 'uchazec' && S.osoba.stav !== 'odmitnuta';
@@ -339,6 +341,7 @@ function kroky() {
     popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata' : 'kancelář projde vaši registraci',
     cekani: 'Vaši registraci prochází kancelář. Po schválení vám dáme vědět.' });
   k.push({ id: 'profil', t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil && S.fotky.length > 0, popis: 'fotky, výška, jazyky, kdy můžete – upravit můžete kdykoli', tlac: 'Doplnit profil' });
+  k.push({ id: 'plocha', t: 'Vixen na ploše telefonu', v: 'instalace', kdo: 'vy', volitelny: true, hotovo: naPlose(), popis: 'nabídky akcí zobrazujeme přednostně v aplikaci', tlac: 'Přidat na plochu' });
   k.push({ id: 'akce', t: 'Nabídka akce', kdo: 'kanc', hotovo: vyzvan(), popis: 'nabídky akcí uvidíte v aplikaci',
     cekani: 'Jakmile pro vás budeme mít akci, dáme vám vědět. Před první akcí vás požádáme o údaje pro smlouvu.' });
   k.push({ id: 'smlouva', t: 'Smlouva před první akcí', ...smlouvaKrok() });
@@ -348,7 +351,7 @@ function kroky() {
 }
 function navStav() {
   if (!S.osoba) return;
-  const k = kroky(), ok = schvalena(), dalsi = k.find((x) => !x.hotovo);
+  const k = kroky(), ok = schvalena(), dalsi = k.find((x) => !x.hotovo && !x.volitelny);
   const prof = k.find((x) => x.id === 'profil'), sml = k.find((x) => x.id === 'smlouva');
   const mapa = { profil: [prof, ok], nastup: [sml, ok && vyzvan()], dokumenty: [sml, ok && vyzvan()] };
   document.querySelectorAll('#tabs button').forEach((b) => {
@@ -358,27 +361,57 @@ function navStav() {
     b.querySelector('i').textContent = hotovo ? '✓' : !otevreno ? '🔒' : { profil: '3', nastup: '4', dokumenty: '5' }[b.dataset.v];
   });
 }
-// zástupce na ploše telefonu: Android nabídne instalaci sám (beforeinstallprompt), iPhone jen ručně přes Sdílet
+// zástupce na ploše telefonu: hostesky k němu navádíme – nabídky akcí zobrazujeme přednostně v aplikaci.
+// Android nabídne instalaci sám (beforeinstallprompt), iPhone jen ručně přes Sdílet; ve vestavěném prohlížeči
+// Facebooku / Instagramu přidat na plochu nejde – nejdřív otevřít v Safari / Chrome.
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.instalace = e; });
+window.addEventListener('appinstalled', () => { try { localStorage.setItem('vixen_na_plose', '1'); } catch {} });
+const PLOCHA_DUVOD = 'Nabídky akcí zobrazujeme přednostně v aplikaci. S ikonou na ploše ji otevřete jedním klepnutím a nic vám neuteče.';
+function zarizeni() {
+  const ua = navigator.userAgent;
+  return { ios: /iphone|ipad|ipod/i.test(ua), android: /android/i.test(ua), vestaveny: /FBAN|FBAV|FB_IAB|Instagram|Messenger/i.test(ua),
+    samostatne: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true };
+}
+function naPlose() {
+  if (zarizeni().samostatne) { try { localStorage.setItem('vixen_na_plose', '1'); } catch {} return true; }
+  try { return localStorage.getItem('vixen_na_plose') === '1'; } catch { return false; }
+}
+function plochaOdlozena() { try { return Number(localStorage.getItem('vixen_plocha_odlozit') || 0) > Date.now(); } catch { return false; } }
 function plochaKarta() {
-  const naPlose = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  let skryto = false; try { skryto = localStorage.getItem('vixen_plocha_skryto') === '1'; } catch {}
-  if (naPlose || skryto) return '';
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const navod = ios ? 'V Safari klepněte dole na <b>Sdílet</b> (čtvereček se šipkou) a pak na <b>Přidat na plochu</b>.'
-    : S.instalace ? 'Jedním klepnutím si přidáte ikonu Vixen na plochu a aplikaci pak otevřete jako každou jinou.'
-    : 'V prohlížeči otevřete nabídku <b>⋮</b> a zvolte <b>Přidat na plochu</b> (nebo <b>Nainstalovat aplikaci</b>).';
-  return `<div class="card plocha"><img src="ikony/ikona-192.png" alt="" width="52" height="52"><div><b class="nadp">Vixen na ploše telefonu</b><span>${navod}</span>
-    <div class="plocha-tl">${!ios && S.instalace ? '<button class="btn" id="plocha-pridat">Přidat na plochu</button>' : ''}<button class="btn o" id="plocha-skryt">Teď ne</button></div></div></div>`;
+  if (naPlose()) return '';
+  const odlozena = plochaOdlozena();
+  return `<div class="card plocha${odlozena ? ' mala' : ''}"><img src="ikony/ikona-192.png" alt="" width="52" height="52"><div><b class="nadp">Přidejte si Vixen na plochu telefonu</b><span>${PLOCHA_DUVOD}</span>
+    <div class="plocha-tl"><button class="btn" id="plocha-navod">${!zarizeni().ios && S.instalace ? 'Přidat na plochu' : 'Jak na to (1 minuta)'}</button>${odlozena ? '' : '<button class="btn o" id="plocha-pozdeji">Později</button>'}</div></div></div>`;
 }
 function zapniPlochu() {
-  const pr = document.getElementById('plocha-pridat');
-  if (pr) pr.onclick = async () => { S.instalace.prompt(); await S.instalace.userChoice; S.instalace = null; document.querySelector('.plocha')?.remove(); };
-  const sk = document.getElementById('plocha-skryt');
-  if (sk) sk.onclick = () => { try { localStorage.setItem('vixen_plocha_skryto', '1'); } catch {} document.querySelector('.plocha')?.remove(); };
+  const nav = document.getElementById('plocha-navod');
+  if (nav) nav.onclick = async () => {
+    if (!zarizeni().ios && S.instalace) { S.instalace.prompt(); const v = await S.instalace.userChoice; S.instalace = null;
+      if (v?.outcome === 'accepted') { try { localStorage.setItem('vixen_na_plose', '1'); } catch {} return S.osoba ? ukaz('prehled') : null; } }
+    vInstalace();
+  };
+  const poz = document.getElementById('plocha-pozdeji');   // „Později“ = připomeneme za 3 dny, karta zatím zůstane malá
+  if (poz) poz.onclick = () => { try { localStorage.setItem('vixen_plocha_odlozit', String(Date.now() + 3 * 864e5)); } catch {} document.querySelector('.plocha')?.classList.add('mala'); poz.remove(); };
+}
+function vInstalace() {
+  const z = zarizeni(), kroky = [];
+  if (z.vestaveny) kroky.push(`Teď máte stránku otevřenou uvnitř Facebooku nebo Instagramu – odtud na plochu přidat nejde. Klepněte vpravo nahoře na <b>⋯</b> (nebo <b>⋮</b>) a zvolte <b>Otevřít v ${z.ios ? 'Safari' : 'prohlížeči (Chrome)'}</b>. Pak pokračujte podle kroků níže.`);
+  if (z.ios) kroky.push('V Safari klepněte dole na <b>Sdílet</b> (čtvereček se šipkou nahoru).', 'Posuňte nabídku níž a klepněte na <b>Přidat na plochu</b>.', 'Vpravo nahoře klepněte na <b>Přidat</b>. Na ploše máte ikonu <b>Vixen</b>.');
+  else kroky.push('V Chrome klepněte vpravo nahoře na <b>⋮</b> (tři tečky).', 'Zvolte <b>Přidat na plochu</b> nebo <b>Nainstalovat aplikaci</b>.', 'Potvrďte <b>Přidat / Instalovat</b>. Na ploše máte ikonu <b>Vixen</b>.');
+  kroky.push('Příště otevírejte Vixen klepnutím na ikonu na ploše.');
+  $app.innerHTML = `<section class="hero mala"><div class="linka"></div><div class="nad">Aplikace na ploše</div><h1>Vixen na ploše telefonu</h1><p>${PLOCHA_DUVOD}</p></section>
+    <div class="card"><ol class="navod">${kroky.map((k) => `<li>${k}</li>`).join('')}</ol>
+    ${!z.ios && S.instalace ? '<button class="btn" id="i-pridat">Přidat na plochu</button>' : ''}
+    <button class="btn o" id="i-hotovo">Hotovo, mám ji na ploše</button>
+    <p class="mute" style="text-align:center"><a href="#" id="i-zpet">Zpět</a></p></div>`;
+  const pr = document.getElementById('i-pridat');
+  if (pr) pr.onclick = async () => { S.instalace.prompt(); const v = await S.instalace.userChoice; S.instalace = null; if (v?.outcome === 'accepted') document.getElementById('i-hotovo').click(); };
+  document.getElementById('i-hotovo').onclick = () => { try { localStorage.setItem('vixen_na_plose', '1'); } catch {} S.osoba ? ukaz('prehled') : vPrihlaseni(); };
+  document.getElementById('i-zpet').onclick = (e) => { e.preventDefault(); S.osoba ? ukaz('prehled') : vPrihlaseni(); };
+  window.scrollTo(0, 0);
 }
 function vPrehled() {
-  const k = kroky(), dalsi = k.find((x) => !x.hotovo), hotovych = k.filter((x) => x.hotovo).length;
+  const k = kroky(), dalsi = k.find((x) => !x.hotovo && !x.volitelny), hotovych = k.filter((x) => x.hotovo).length;
   const odmitnuta = S.osoba.stav === 'odmitnuta';
   let ted;
   if (odmitnuta) ted = `<div class="ted kancelar"><b>Registrace nebyla přijata</b>Pokud jde o omyl, ozvěte se prosím kanceláři Vixen.</div>`;
