@@ -52,7 +52,7 @@ function pole(id, label, val = '', o = {}) {
   else input = `<input type="${typ}" ${attr} value="${esc(val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}>`;
   return `<div class="fld${o.cls ? ' ' + o.cls : ''}" data-f="${id}"><label for="${id}">${label}</label>${input}<div class="err"></div>${o.hint ? `<div class="hint">${o.hint}</div>` : ''}</div>`;
 }
-const val = (id) => { const el = document.getElementById(id); return el ? (el.type === 'checkbox' ? el.checked : el.value.trim()) : ''; };
+const val = (id) => { const el = document.getElementById(id); return el ? (el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value.trim()) : ''; };
 function ukazChyby(chyby) {
   document.querySelectorAll('.fld').forEach((f) => { f.classList.remove('chyba'); f.querySelector('.err').textContent = ''; });
   let prvni = null;
@@ -65,6 +65,7 @@ function ukazChyby(chyby) {
   return !prvni;
 }
 function hlidejPole(kontrola) {   // kontrola pole po opuštění; u pole s chybou průběžně, aby chyba zmizela hned po opravě
+  S.kontrola = kontrola;
   const over = (el, vzdy) => {
     const f = el.closest('.fld'); if (!f) return;
     if (!vzdy && !f.classList.contains('chyba')) return;
@@ -77,41 +78,48 @@ function hlidejPole(kontrola) {   // kontrola pole po opuštění; u pole s chyb
   });
 }
 
-// ---------- kde může pracovat: kraje (více) → okresní města (výchozí všechna) ----------
+// ---------- kde může pracovat: města bez nutnosti znát kraj (Vixen 26. 10. 2026) ----------
+// rychlý výběr krajských měst + vyhledávání ostatních okresních měst; vybrané jako štítky s ✕
+const KRAJSKA = ['praha', 'brno-mesto', 'ostrava-mesto', 'plzen-mesto', 'ceske-budejovice', 'hradec-kralove', 'pardubice', 'olomouc', 'liberec', 'usti-nad-labem', 'zlin', 'jihlava', 'karlovy-vary'];
+const bezDiak = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function oblastHtml(vybrane) {   // vybrane = Set kódů okresů nebo null (nová registrace)
-  const vKraji = (k) => S.cis.okres.filter((o) => o.kraj_kod === k);
-  const krajZap = (k) => vybrane && vKraji(k).some((o) => vybrane.has(o.kod));
-  return `<div class="fld oblast" data-f="oblast"><label>Kde můžete pracovat – vyberte kraje</label>
-    <div class="chips">${S.cis.kraj.map((k) => `<label><input type="checkbox" name="oblkraj" value="${k.kod}"${krajZap(k.kod) ? ' checked' : ''}> ${esc(k.nazev.replace('Hlavní město ', ''))}</label>`).join('')}</div>
-    ${S.cis.kraj.map((k) => `<div class="okresy${krajZap(k.kod) ? '' : ' hidden'}" data-kraj="${k.kod}">
-      <div class="okr-hlava"><b>${esc(k.nazev)}</b> <span class="okr-pocet"></span> <a href="#" class="okr-vse">vybrat vše</a></div>
-      <div class="chips">${vKraji(k.kod).map((o) => `<label><input type="checkbox" name="okres" value="${o.kod}"${!vybrane || vybrane.has(o.kod) ? ' checked' : ''}> ${esc(o.mesto)}</label>`).join('')}</div>
-      <div class="hint">Okresní města – odznačte, kam jezdit nechcete.</div></div>`).join('')}
-    <div class="err"></div></div>`;
+  S.oblast = new Set(vybrane ? [...vybrane] : []);
+  const rychle = KRAJSKA.map((k) => S.cis.okres.find((o) => o.kod === k)).filter(Boolean);
+  return `<div class="fld oblast" data-f="oblast"><label for="mesto-hledej">Vyberte města</label>
+    <div class="chips rychle">${rychle.map((o) => `<label><input type="checkbox" name="mesto-rychle" value="${o.kod}"> ${esc(o.mesto)}</label>`).join('')}</div>
+    <div class="hledej-mesto"><input type="search" id="mesto-hledej" placeholder="Další město – začněte psát (např. Písek)" autocomplete="off"><div class="naseptavac hidden" id="mesto-nab"></div></div>
+    <div class="vybrana" id="mesta-vybrana"></div>
+    <div class="err"></div><div class="hint">Vyberte všechna města, kam můžete dojet. Kraj znát nemusíte.</div></div>`;
 }
-function oblastPocty() {
-  document.querySelectorAll('.okresy').forEach((p) => {
-    const vse = p.querySelectorAll('input[name=okres]'), zap = p.querySelectorAll('input[name=okres]:checked');
-    p.querySelector('.okr-pocet').textContent = `${zap.length} z ${vse.length}`;
-    p.querySelector('.okr-vse').textContent = zap.length === vse.length ? 'zrušit vše' : 'vybrat vše';
-  });
+function oblastPrekontroluj() {   // po přidání / odebrání města schovat nebo ukázat chybu
+  const f = document.querySelector('.fld[data-f="oblast"]'); if (!f || !S.kontrola || !f.classList.contains('chyba')) return;
+  const t = S.kontrola().oblast || ''; f.classList.toggle('chyba', !!t); f.querySelector('.err').textContent = t;
+}
+function oblastKresli() {
+  document.querySelectorAll('input[name=mesto-rychle]').forEach((ch) => (ch.checked = S.oblast.has(ch.value)));
+  const box = document.getElementById('mesta-vybrana'); if (!box) return;
+  const vyb = S.cis.okres.filter((o) => S.oblast.has(o.kod));
+  box.innerHTML = vyb.length ? `<span class="mute">Vybráno ${vyb.length}:</span> ` + vyb.map((o) => `<span class="mesto-chip">${esc(o.mesto)}<button type="button" data-k="${o.kod}" title="Odebrat ${esc(o.mesto)}">✕</button></span>`).join('') : '<span class="mute">Zatím žádné město.</span>';
+  box.querySelectorAll('button').forEach((btn) => (btn.onclick = () => { S.oblast.delete(btn.dataset.k); oblastKresli(); oblastPrekontroluj(); }));
 }
 function zapniOblast() {
-  document.querySelectorAll('input[name=oblkraj]').forEach((ch) => ch.addEventListener('change', () => {
-    const p = document.querySelector(`.okresy[data-kraj="${ch.value}"]`);
-    p.classList.toggle('hidden', !ch.checked);
-    p.querySelectorAll('input[name=okres]').forEach((o) => (o.checked = ch.checked));   // nově vybraný kraj = všechna města
-    oblastPocty();
+  document.querySelectorAll('input[name=mesto-rychle]').forEach((ch) => ch.addEventListener('change', () => {
+    if (ch.checked) S.oblast.add(ch.value); else S.oblast.delete(ch.value);
+    oblastKresli(); oblastPrekontroluj();
   }));
-  document.querySelectorAll('.okr-vse').forEach((a) => (a.onclick = (e) => {
-    e.preventDefault();
-    const boxy = a.closest('.okresy').querySelectorAll('input[name=okres]');
-    const vse = [...boxy].every((b) => b.checked); boxy.forEach((b) => (b.checked = !vse)); oblastPocty();
-  }));
-  document.querySelectorAll('input[name=okres]').forEach((o) => o.addEventListener('change', oblastPocty));
-  oblastPocty();
+  const vstup = document.getElementById('mesto-hledej'), nab = document.getElementById('mesto-nab');
+  const pridej = (k) => { S.oblast.add(k); vstup.value = ''; nab.classList.add('hidden'); oblastKresli(); oblastPrekontroluj(); vstup.focus(); };
+  vstup.addEventListener('input', () => {
+    const q = bezDiak(vstup.value.trim()); if (!q) return nab.classList.add('hidden');
+    const l = S.cis.okres.filter((o) => !S.oblast.has(o.kod) && bezDiak(o.mesto).includes(q)).slice(0, 8);
+    nab.innerHTML = l.length ? l.map((o) => `<button type="button" data-k="${o.kod}">${esc(o.mesto)}</button>`).join('') : '<span class="mute">Nenašli jsme – zkuste nejbližší okresní město.</span>';
+    nab.classList.remove('hidden');
+    nab.querySelectorAll('button').forEach((btn) => (btn.onclick = () => pridej(btn.dataset.k)));
+  });
+  vstup.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); nab.querySelector('button')?.click(); } });
+  oblastKresli();
 }
-const oblastVyber = () => [...document.querySelectorAll('.okresy:not(.hidden) input[name=okres]:checked')].map((x) => x.value);
+const oblastVyber = () => [...(S.oblast || [])];
 
 // ---------- start ----------
 // číselníky se načítají na pozadí – úvod se ukáže hned; registrace a přihlášený obsah na ně počkají
@@ -135,7 +143,7 @@ document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => ukaz(
 const IKONA = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const VYHODY = [
   [IKONA('<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M8 14h3"/>'), 'Pracujete, kdy chcete', 'Akce si vybíráte podle svého času.'],
-  [IKONA('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'), 'Akce blízko vás', 'Uvedete kraje a města, kam můžete jezdit.'],
+  [IKONA('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'), 'Akce blízko vás', 'Uvedete města, kam můžete jezdit.'],
   [IKONA('<rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10 18.5h4M9.5 8.5l2 2 3.5-3.5"/>'), 'Vše v telefonu', 'Smlouvu podepíšete kódem, bez papírů.'],
 ];
 function vUvod() {
@@ -163,23 +171,27 @@ function vRegistrace() {
    <div class="oddil"><i>2</i>Fotky</div>
    <div class="fld" data-f="fotky"><label>1–3 fotky – portrét nebo postava</label><div class="fotky" id="reg-fotky"></div><div class="err"></div>
      <div class="hint">Fotka se zmenší přímo v telefonu. Uvidí ji jen kancelář Vixen.</div></div>
-   <div class="oddil"><i>3</i>Místa práce</div>
+   <div class="oddil"><i>3</i>Kde můžete pracovat</div>
    ${oblastHtml(null)}
-   <div class="oddil"><i>4</i>Práce a kontakt</div>
+   <div class="oddil"><i>4</i>O vás</div>
+   <div class="row">${pole('vyska', 'Výška (cm)', '', { typ: 'number', im: 'numeric', ph: 'např. 170' })}<div></div></div>
+   ${K.jazykyHtml([])}
+   <label class="chk"><input type="checkbox" id="ridicak"> Mám řidičák</label>
+   <label class="chk"><input type="checkbox" id="auto"> Mám vlastní auto</label>
    <div class="fld" data-f="zajem"><label>Mám zájem o</label><div class="chips">
      <label><input type="checkbox" name="zajem" value="hosteska" checked> hosteska</label>
      <label><input type="checkbox" name="zajem" value="promoter"> promotér/ka</label>
      <label><input type="checkbox" name="zajem" value="jine"> jiné</label></div><div class="err"></div></div>
-   <div class="fld" data-f="kanal"><label>Kontaktujte mě přes</label><div class="chips">
-     <label><input type="checkbox" name="kanal" value="email" checked> e-mail</label>
-     <label><input type="checkbox" name="kanal" value="sms" checked> SMS</label>
-     <label><input type="checkbox" name="kanal" value="whatsapp"> WhatsApp</label></div><div class="err"></div></div>
+   <div class="oddil"><i>5</i>Nabídky a souhlas</div>
+   <p class="mute" style="margin-top:0">Nabídky akcí najdete v aplikaci, upozornění vám pošleme e-mailem.</p>
+   <label class="chk"><input type="checkbox" id="whatsapp"> Upozornění na nové nabídky mi můžete posílat i přes WhatsApp na můj telefon.</label>
    <div class="fld" data-f="gdpr"><label class="chk"><input type="checkbox" id="gdpr"> <span>Souhlasím se zpracováním osobních údajů pro účely spolupráce s Vixen. <span class="mute">(text souhlasu dodá Vixen – DOPLNIT)</span></span></label><div class="err"></div></div>
    <div class="past" aria-hidden="true"><label>Web <input id="web" name="web" tabindex="-1" autocomplete="off"></label></div>
    <button class="btn" type="submit">Odeslat registraci</button></form>
    <p class="mute" style="text-align:center"><a href="#" id="zpet">Už mám registraci – přihlásit</a></p>`;
   document.getElementById('zpet').onclick = (e) => { e.preventDefault(); vPrihlaseni(); };
   zapniOblast();
+  K.jazykyZapni(document.getElementById('f'));
   S.regFotky = []; const zacatek = Date.now();   // ochrana proti robotům: doba vyplnění + skryté pole „web“
   const kresliRegFotky = () => {
     const box = document.getElementById('reg-fotky');
@@ -198,8 +210,9 @@ function vRegistrace() {
   const kontrola = () => ({
     jmeno: K.povinne(val('jmeno'), 'jméno'), prijmeni: K.povinne(val('prijmeni'), 'příjmení'),
     telefon: K.telefonChyba(val('telefon')), email: K.emailChyba(val('email')),
-    oblast: oblastVyber().length ? '' : 'Vyberte aspoň jeden kraj a v něm aspoň jedno město.', obec: K.povinne(val('obec'), 'obec'),
+    oblast: oblastVyber().length ? '' : 'Vyberte aspoň jedno město.', obec: K.povinne(val('obec'), 'obec'),
     fotky: S.regFotky.length ? '' : 'Přidejte aspoň jednu fotku.',
+    vyska: val('vyska') && (val('vyska') < 120 || val('vyska') > 220) ? 'Výška 120–220 cm.' : '',
     zajem: vyber('zajem').length ? '' : 'Vyberte aspoň jednu možnost.',
     gdpr: val('gdpr') ? '' : 'Bez souhlasu vás nemůžeme evidovat.',
   });
@@ -218,7 +231,8 @@ function vRegistrace() {
     }
     const { error } = await sb.rpc('registrace', { p: { fotky,
       jmeno: val('jmeno'), prijmeni: val('prijmeni'), telefon: K.telefonNormalizuj(val('telefon')), email: val('email').toLowerCase(),
-      okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), kanal_kontaktu: vyber('kanal'), souhlas_gdpr_v: C.gdprVerze,
+      okresy: oblastVyber(), obec: val('obec'), zajem: vyber('zajem'), souhlas_gdpr_v: C.gdprVerze,
+      vyska: val('vyska') || null, jazyky: K.jazykyHodnota(e.target), ridicak: val('ridicak'), auto: val('auto'), whatsapp: val('whatsapp'),
       web: document.getElementById('web').value, cas_ms: Date.now() - zacatek } });
     if (error) {
       b.disabled = false; b.textContent = 'Odeslat registraci';
@@ -229,7 +243,7 @@ function vRegistrace() {
       }
       chybaFormu(e.target, chybaText(error)); return;
     }
-    $app.innerHTML = `<h1>Děkujeme!</h1>${msg('Registrace dorazila ✓')}<p>Ozveme se vám. Jakmile vás schválíme, přihlásíte se e-mailem <b>${esc(val('email') || '')}</b> a doplníte profil.</p>
+    $app.innerHTML = `<h1>Děkujeme!</h1>${msg('Registrace dorazila ✓')}<p>Přihlásíte se e-mailem <b>${esc(val('email') || '')}</b> – heslo není potřeba. Nabídky akcí pak uvidíte v aplikaci. Údaje pro smlouvu budeme chtít až před vaší první akcí.</p>
       <button class="btn o" id="pp">Přihlásit</button>`;
     document.getElementById('pp').onclick = vPrihlaseni;
   };
@@ -275,16 +289,18 @@ async function poPrihlaseni() {
   ukaz('prehled');
 }
 async function nacti() {
-  const [o, p, n, d, oo, ff] = await Promise.all([
+  const [o, p, n, d, oo, ff, sch] = await Promise.all([
     sb.from('osoba').select('*').single(),
     sb.from('osoba_profil').select('*').maybeSingle(),
     sb.from('osoba_nastup').select('*').maybeSingle(),
     sb.from('dokument').select('id,stav,obsah,vytvoreno,podepsano_at,podpis,vixen_podepsano_at,vixen_podpis,odeslano_at,odeslano_na,odstoupeni_do,odstoupeno_at,pdf_cesta,dokument_sablona(nazev,druh)').order('vytvoreno', { ascending: false }),
     sb.from('osoba_okres').select('okres_kod'),
     sb.from('osoba_foto').select('id,cesta,poradi').order('poradi'),
+    sb.rpc('parametr_dnes', { p_kod: 'registrace_schvalovat' }),
   ]);
   S.okresy = (oo.data || []).map((x) => x.okres_kod);
   S.fotky = ff.data || [];
+  S.schvalovat = sch.error ? true : sch.data !== false;
   S.osoba = o.data; S.profil = p.data; S.nastup = n.data; S.dokumenty = (d.data || []).filter((x) => x.stav !== 'zruseno');
   document.getElementById('kdo').textContent = S.osoba ? S.osoba.jmeno + ' ' + S.osoba.prijmeni : '';
 }
@@ -292,34 +308,47 @@ function ukaz(v) {
   S.view = v;
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
   navStav();
-  ({ prehled: vPrehled, profil: vProfil, nastup: vNastup, dokumenty: vDokumenty })[v]();
+  ({ prehled: vPrehled, profil: vProfil, forma: vForma, nastup: vNastup, dokumenty: vDokumenty })[v]();
   window.scrollTo(0, 0);
 }
 const schvalena = () => S.osoba && S.osoba.stav !== 'uchazec' && S.osoba.stav !== 'odmitnuta';
-
-// ---------- přehled: tok kroků k první akci ----------
-function kroky() {
+const vyzvan = () => !!S.osoba?.smlouva_vyzva_at;
+const FORMY = { dpp: 'Dohoda o provedení práce (DPP)', ico: 'Mám IČO – budu fakturovat', prilezitostna: 'Smlouva o příležitostné činnosti' };
+function smlouvaKrok() {   // co je v kroku „Smlouva před první akcí“ na řadě
+  const forma = S.osoba.forma_spoluprace;
   const dpp = S.dokumenty.find((x) => x.dokument_sablona?.druh === 'dpp');
-  const ok = schvalena();
-  return [
-    { t: 'Registrace', kdo: 'vy', hotovo: true, popis: 'kontakt, kde můžete pracovat' },
-    { t: 'Schválení kanceláří', kdo: 'kanc', hotovo: ok, popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata' : 'kancelář projde vaši registraci' },
-    { t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil, popis: 'fotka, výška, konfekce, jazyky, kdy můžete', tlac: 'Doplnit profil' },
-    { t: 'Údaje pro smlouvu', v: 'nastup', kdo: 'vy', hotovo: !!S.nastup?.potvrzeno_at, popis: 'rodné číslo, adresa, pojišťovna, účet', tlac: 'Vyplnit údaje' },
-    dpp && dpp.stav === 'k_podpisu' && !dpp.vixen_podepsano_at
-      ? { t: 'Podpis smlouvy (DPP)', v: 'dokumenty', kdo: 'kanc', hotovo: false, popis: 'smlouvu teď podepisuje Vixen, pak vy' }
-      : { t: 'Podpis smlouvy (DPP)', v: 'dokumenty', kdo: 'vy', hotovo: dpp?.stav === 'podepsano' && !dpp.odstoupeno_at, popis: dpp?.stav === 'k_podpisu' ? 'Vixen podepsal – smlouva čeká na váš podpis' : dpp?.odeslano_at ? 'podepsaná smlouva přišla na váš e-mail' : 'přečíst a podepsat kódem', tlac: dpp ? 'Podepsat smlouvu' : 'Připravit smlouvu' },
-    { t: 'Přihlášení na ČSSZ', kdo: 'kanc', hotovo: false, popis: 'kancelář vás přihlásí před první akcí' },
-  ];
+  if (!vyzvan()) return { hotovo: false, kdo: 'kanc', popis: 'až před vaší první akcí – kancelář vám dá vědět' };
+  if (!forma) return { hotovo: false, kdo: 'vy', v: 'forma', popis: 'vyberte, jak s námi budete spolupracovat', tlac: 'Vybrat formu spolupráce' };
+  if (forma === 'ico') return { hotovo: !!S.osoba.ico, kdo: 'vy', v: 'forma', popis: S.osoba.ico ? 'fakturujete na IČO ' + S.osoba.ico : 'doplňte IČO', tlac: 'Doplnit IČO' };
+  if (!S.nastup?.potvrzeno_at) return { hotovo: false, kdo: 'vy', v: 'nastup', popis: 'rodné číslo, adresa, pojišťovna, účet', tlac: 'Vyplnit údaje' };
+  if (forma === 'prilezitostna') return { hotovo: true, kdo: 'vy', v: 'dokumenty', popis: 'údaje máme – smlouvu připraví kancelář' };
+  if (dpp && dpp.stav === 'k_podpisu' && !dpp.vixen_podepsano_at) return { hotovo: false, kdo: 'kanc', v: 'dokumenty', popis: 'smlouvu teď podepisuje Vixen, pak vy' };
+  return { hotovo: dpp?.stav === 'podepsano' && !dpp.odstoupeno_at, kdo: 'vy', v: 'dokumenty',
+    popis: dpp?.stav === 'k_podpisu' ? 'Vixen podepsal – smlouva čeká na váš podpis' : dpp?.odeslano_at ? 'podepsaná smlouva přišla na váš e-mail' : 'přečíst a podepsat kódem', tlac: dpp ? 'Podepsat smlouvu' : 'Připravit smlouvu' };
+}
+function kroky() {
+  const k = [{ id: 'reg', t: 'Registrace', kdo: 'vy', hotovo: true, popis: 'kontakt, města, fotka' }];
+  if (S.schvalovat || !schvalena()) k.push({ id: 'schval', t: 'Schválení kanceláří', kdo: 'kanc', hotovo: schvalena(),
+    popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata' : 'kancelář projde vaši registraci',
+    cekani: 'Vaši registraci prochází kancelář. Po schválení vám dáme vědět.' });
+  k.push({ id: 'profil', t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil && S.fotky.length > 0, popis: 'fotky, výška, jazyky, kdy můžete – upravit můžete kdykoli', tlac: 'Doplnit profil' });
+  k.push({ id: 'akce', t: 'Nabídka akce', kdo: 'kanc', hotovo: vyzvan(), popis: 'nabídky akcí uvidíte v aplikaci',
+    cekani: 'Jakmile pro vás budeme mít akci, dáme vám vědět. Před první akcí vás požádáme o údaje pro smlouvu.' });
+  k.push({ id: 'smlouva', t: 'Smlouva před první akcí', ...smlouvaKrok() });
+  if (S.osoba.forma_spoluprace === 'dpp') k.push({ id: 'cssz', t: 'Přihlášení na ČSSZ', kdo: 'kanc', hotovo: false, popis: 'kancelář vás přihlásí před první akcí',
+    cekani: 'Z vaší strany je hotovo. Kancelář vás přihlásí na ČSSZ před první akcí.' });
+  return k;
 }
 function navStav() {
   if (!S.osoba) return;
   const k = kroky(), ok = schvalena(), dalsi = k.find((x) => !x.hotovo);
-  const mapa = { profil: k[2], nastup: k[3], dokumenty: k[4] };
+  const prof = k.find((x) => x.id === 'profil'), sml = k.find((x) => x.id === 'smlouva');
+  const mapa = { profil: [prof, ok], nastup: [sml, ok && vyzvan()], dokumenty: [sml, ok && vyzvan()] };
   document.querySelectorAll('#tabs button').forEach((b) => {
-    const x = mapa[b.dataset.v]; if (!x) return;
-    b.classList.toggle('hot', x.hotovo); b.classList.toggle('dalsi', ok && x === dalsi); b.classList.toggle('zamek', !ok);
-    b.querySelector('i').textContent = x.hotovo ? '✓' : !ok ? '🔒' : { profil: '3', nastup: '4', dokumenty: '5' }[b.dataset.v];
+    const [x, otevreno] = mapa[b.dataset.v] || []; if (!x) return;
+    const hotovo = b.dataset.v === 'nastup' ? !!S.nastup?.potvrzeno_at : x.hotovo;
+    b.classList.toggle('hot', hotovo); b.classList.toggle('dalsi', otevreno && x === dalsi && x.v === b.dataset.v); b.classList.toggle('zamek', !otevreno);
+    b.querySelector('i').textContent = hotovo ? '✓' : !otevreno ? '🔒' : { profil: '3', nastup: '4', dokumenty: '5' }[b.dataset.v];
   });
 }
 // zástupce na ploše telefonu: Android nabídne instalaci sám (beforeinstallprompt), iPhone jen ručně přes Sdílet
@@ -346,16 +375,17 @@ function vPrehled() {
   const odmitnuta = S.osoba.stav === 'odmitnuta';
   let ted;
   if (odmitnuta) ted = `<div class="ted kancelar"><b>Registrace nebyla přijata</b>Pokud jde o omyl, ozvěte se prosím kanceláři Vixen.</div>`;
-  else if (dalsi.kdo === 'vy') ted = `<div class="ted"><b>Teď je to na vás: ${esc(dalsi.t)}</b>${esc(dalsi.popis)}<button class="btn" id="dal">${esc(dalsi.tlac)} →</button></div>`;
-  else if (dalsi === k[1]) ted = `<div class="ted kancelar"><b>Teď čekáte na kancelář</b>Vaši registraci prochází kancelář. Po schválení vám dáme vědět a budete moct pokračovat profilem.</div>`;
-  else ted = `<div class="ted konec"><b>Z vaší strany je hotovo ✓</b>Kancelář vás přihlásí na ČSSZ před první akcí. Údaje můžete kdykoli upravit.</div>`;
+  else if (dalsi && dalsi.kdo === 'vy') ted = `<div class="ted"><b>Teď je to na vás: ${esc(dalsi.t)}</b>${esc(dalsi.popis)}<button class="btn" id="dal">${esc(dalsi.tlac)} →</button></div>`;
+  else if (dalsi && dalsi.cekani) ted = `<div class="ted kancelar"><b>Teď čekáte na kancelář</b>${esc(dalsi.cekani)}</div>`;
+  else if (dalsi) ted = `<div class="ted kancelar"><b>Teď čekáte na kancelář</b>${esc(dalsi.popis)}</div>`;
+  else ted = `<div class="ted konec"><b>Z vaší strany je hotovo ✓</b>Údaje můžete kdykoli upravit.</div>`;
   const stav = (x) => (x.hotovo ? 'hotovo' : x === dalsi ? 'nyni' : 'budouci');
   $app.innerHTML = `<h1>Dobrý den, ${esc(K.vokativ(S.osoba.jmeno))}</h1>
    <p class="mute">Vaše cesta k první akci – hotovo ${hotovych} z ${k.length}</p>
    <div class="prubeh"><div style="width:${Math.round((hotovych / k.length) * 100)}%"></div></div>
    ${ted}
    ${plochaKarta()}
-   <ol class="cesta">${k.map((x, i) => `<li class="${stav(x)}"${x.v && schvalena() ? ` data-v="${x.v}"` : ''}>
+   <ol class="cesta">${k.map((x, i) => `<li class="${stav(x)}"${x.v && schvalena() && (x.id !== 'smlouva' || vyzvan()) ? ` data-v="${x.v}"` : ''}>
      <span class="c">${x.hotovo ? '✓' : i + 1}</span>
      <span class="t"><b>${esc(x.t)}<span class="kdo ${x.kdo === 'vy' ? 'vy' : 'kanc'}">${x.kdo === 'vy' ? 'vy' : 'kancelář'}</span></b><small>${esc(x.popis)}</small></span></li>`).join('')}</ol>`;
   const tl = document.getElementById('dal'); if (tl) tl.onclick = () => ukaz(dalsi.v);
@@ -421,7 +451,7 @@ function vProfil() {
   const kontrola = () => ({
     vyska: val('vyska') && (val('vyska') < 120 || val('vyska') > 220) ? 'Výška 120–220 cm.' : '',
     bota: val('bota') && (val('bota') < 30 || val('bota') > 50) ? 'Velikost bot 30–50.' : '',
-    oblast: oblastVyber().length ? '' : 'Vyberte aspoň jeden kraj a v něm aspoň jedno město.',
+    oblast: oblastVyber().length ? '' : 'Vyberte aspoň jedno město.',
   });
   hlidejPole(kontrola);
   document.getElementById('f').onsubmit = async (e) => {
@@ -439,16 +469,61 @@ function vProfil() {
   };
 }
 
+// ---------- před první akcí: forma spolupráce (rozcestník, Vixen 26. 10. 2026) ----------
+const icoChyba = (v) => {
+  const c = K.cisla(v); if (!c) return 'Vyplňte IČO.'; if (c.length !== 8) return 'IČO má 8 číslic.';
+  const a = [...c.slice(0, 7)].reduce((s, d, i) => s + Number(d) * (8 - i), 0) % 11;
+  return Number(c[7]) === (a === 0 ? 1 : a === 1 ? 0 : 11 - a) ? '' : 'IČO nesedí – zkontrolujte číslice.';
+};
+function vForma(zmena = false) {
+  S.view = 'forma';
+  if (!schvalena() || !vyzvan()) return ($app.innerHTML = '<h1>Smlouva</h1>' + msg('Smlouvu budeme chtít až před vaší první akcí – kancelář vám dá vědět.', 'warn'));
+  const forma = zmena ? null : S.osoba.forma_spoluprace;
+  if (forma === 'ico') {
+    $app.innerHTML = `<h1>Spolupráce na IČO</h1><p class="mute">${esc(FORMY.ico)} · <a href="#" id="zmen-formu">změnit</a></p>
+      <form id="f" class="card" novalidate>${pole('ico', 'IČO', S.osoba.ico || '', { im: 'numeric', ph: '12345678' })}
+      <p class="mute">Po akci vystavíte fakturu. <span class="mute">(jaké další údaje a doklady potřebuje Vixen – DOPLNIT)</span></p>
+      <button class="btn" type="submit">Uložit</button></form>`;
+    document.getElementById('zmen-formu').onclick = (e) => { e.preventDefault(); vForma(true); };
+    const kontrola = () => ({ ico: icoChyba(val('ico')) });
+    hlidejPole(kontrola);
+    document.getElementById('f').onsubmit = async (e) => {
+      e.preventDefault(); if (!ukazChyby(kontrola())) return;
+      const { error } = await sb.from('osoba').update({ ico: K.cisla(val('ico')) }).eq('id', S.osoba.id);
+      if (error) return chybaFormu(e.target, chybaText(error));
+      await nacti(); ukaz('prehled');
+    };
+    return;
+  }
+  $app.innerHTML = `<h1>Jak s námi budete spolupracovat?</h1>
+    <p class="mute">Před první akcí potřebujeme vědět, na co budete pracovat. Podle toho připravíme smlouvu.</p>
+    <div class="formy">
+      <button class="forma" data-f="dpp"><b>${FORMY.dpp}</b><span>Dohoda + prohlášení poplatníka, podepíšete v telefonu kódem.</span></button>
+      <button class="forma" data-f="ico"><b>${FORMY.ico}</b><span>Máte živnost – po akci vystavíte fakturu.</span></button>
+      <button class="forma" data-f="prilezitostna"><b>${FORMY.prilezitostna}</b><span>Chodíte nepravidelně.</span></button>
+    </div><div id="m"></div>`;
+  $app.querySelectorAll('.forma').forEach((b) => (b.onclick = async () => {
+    const { error } = await sb.from('osoba').update({ forma_spoluprace: b.dataset.f }).eq('id', S.osoba.id);
+    if (error) return (document.getElementById('m').innerHTML = msg(esc(chybaText(error)), 'bad'));
+    await nacti(); ukaz(b.dataset.f === 'ico' ? 'forma' : 'nastup');
+  }));
+}
+
 // ---------- krok 4: údaje pro smlouvu ----------
 const SOUHLAS_SML = 'Tento e-mail je můj soukromý (ne pracovní ani sdílený) a souhlasím, aby na něj Vixen posílal smlouvy a dohody k elektronickému uzavření.';
 function vNastup(predvypln) {
-  if (!schvalena()) return ($app.innerHTML = '<h1>Údaje pro smlouvu</h1>' + msg('Údaje půjde doplnit po schválení registrace.', 'warn'));
+  if (!schvalena() || !vyzvan()) return ($app.innerHTML = '<h1>Údaje pro smlouvu</h1>' + msg('Údaje pro smlouvu budeme chtít až před vaší první akcí – kancelář vám dá vědět.', 'warn'));
+  if (!S.osoba.forma_spoluprace || S.osoba.forma_spoluprace === 'ico') return vForma();
   const n = predvypln || S.nastup || { obcanstvi: 'CZ', danova_rezidence: 'CZ', stat_bydliste: 'CZ', rodne_prijmeni: S.osoba.prijmeni };
   const rc = n.rodne_cislo ? n.rodne_cislo.slice(0, 6) + '/' + n.rodne_cislo.slice(6) : '';
   const bankaJina = n.ucet_banka && !S.cis.banka.some((b) => b.kod === n.ucet_banka);
   $app.innerHTML = `<h1>Údaje pro smlouvu</h1>
-  <p class="mute">Potřebujeme je pro dohodu (DPP), přihlášení na sociální správu a výplatu. Vyplníte jednou, dál se předvyplňují.</p>
+  <p class="mute">${esc(FORMY[S.osoba.forma_spoluprace])} · <a href="#" id="zmen-formu">změnit</a>. Vyplníte jednou, dál se předvyplňují.</p>
   <form id="f" class="card" novalidate>
+   <div class="fld up-otazka" data-f="up"><label>Úřad práce – důležité</label>
+     <label class="chk velke"><input type="radio" name="up" id="up_ne" ${S.nastup && !n.vedena_na_up ? 'checked' : ''}> <b>NEJSEM</b> veden/a v evidenci úřadu práce</label>
+     <label class="chk velke"><input type="radio" name="up" id="up_ano" ${n.vedena_na_up ? 'checked' : ''}> <b>JSEM</b> veden/a v evidenci úřadu práce</label>
+     <div class="err"></div><div class="hint">Musíme to vědět ještě před podpisem smlouvy.</div></div>
    <div class="row">${pole('jm', 'Jméno', S.osoba.jmeno, { ro: 1 })}${pole('pr', 'Příjmení', S.osoba.prijmeni, { ro: 1 })}</div>
    ${pole('obcanstvi', 'Státní občanství', '', { select: opt(S.cis.stat, n.obcanstvi) })}
    ${pole('rc', 'Rodné číslo', rc, { im: 'numeric', ph: '015412/1234', hint: 'Datum narození doplníme z rodného čísla.' })}
@@ -471,9 +546,8 @@ function vNastup(predvypln) {
    <h2>E-mail pro smlouvy</h2>
    ${pole('email_sml', 'Soukromý e-mail pro smlouvy', n.email_smlouvy || S.osoba.email || '', { typ: 'email', ac: 'email', hint: 'Sem vám pošleme podepsanou smlouvu v PDF. Doručením je smlouva uzavřená.' })}
    <div class="fld" data-f="souhlas_sml"><label class="chk"><input type="checkbox" id="souhlas_sml" ${n.email_smlouvy_souhlas_at ? 'checked' : ''}> ${SOUHLAS_SML}</label><div class="err"></div></div>
-   <h2>Ještě dvě otázky</h2>
+   <h2>Ještě jedna otázka</h2>
    <label class="chk"><input type="checkbox" id="duchod" ${n.predcasny_duchod ? 'checked' : ''}> Pobírám předčasný starobní důchod</label>
-   <label class="chk"><input type="checkbox" id="up" ${n.vedena_na_up ? 'checked' : ''}> Jsem v evidenci úřadu práce</label>
    <button class="btn" type="submit">Pokračovat ke kontrole</button></form>`;
 
   const prepni = () => {
@@ -504,9 +578,11 @@ function vNastup(predvypln) {
       banka: val('banka') === 'jina' ? '' : (u.includes('banky') ? u : ''), kod_banky: val('banka') === 'jina' && u.includes('banky') ? u : '',
       email_sml: K.emailChyba(val('email_sml')),
       souhlas_sml: val('souhlas_sml') ? '' : 'Bez souhlasu nejde smlouvu podepsat v aplikaci.',
+      up: val('up_ne') || val('up_ano') ? '' : 'Vyberte prosím, jestli jste v evidenci úřadu práce.',
     };
   };
   hlidejPole(kontrola);
+  document.getElementById('zmen-formu').onclick = (e) => { e.preventDefault(); vForma(true); };
   document.getElementById('f').onsubmit = (e) => {
     e.preventDefault(); if (!ukazChyby(kontrola())) return;
     vSouhrn({
@@ -515,7 +591,7 @@ function vNastup(predvypln) {
       psc: val('psc').replace(/\s/g, ''), obec: val('obec'), stat_bydliste: val('stat_bydliste'), koresp_adresa: val('koresp') || null,
       zdravotni_pojistovna: val('zp') || null, danova_rezidence: val('rezidence'), zahr_dan_id: val('rezidence') !== 'CZ' ? val('zahr_id') : null,
       ucet_predcisli: K.cisla(val('pred')) || null, ucet_cislo: K.cisla(val('ucet')), ucet_banka: kodBanky(),
-      predcasny_duchod: val('duchod'), vedena_na_up: val('up'),
+      predcasny_duchod: val('duchod'), vedena_na_up: val('up_ano'),
       email_smlouvy: val('email_sml').toLowerCase(),
       email_smlouvy_souhlas_at: n.email_smlouvy_souhlas_at && (n.email_smlouvy || '') === val('email_sml').toLowerCase() ? n.email_smlouvy_souhlas_at : new Date().toISOString(),
       email_smlouvy_souhlas_text: SOUHLAS_SML,
@@ -551,8 +627,10 @@ function vSouhrn(n) {
     const { error } = await sb.from('osoba_nastup').upsert({ ...n, potvrzeno_at: new Date().toISOString() });
     if (error) { e.target.disabled = false; return (document.getElementById('m').innerHTML = msg(esc(chybaText(error)), 'bad')); }
     await nacti();
-    $app.innerHTML = `<h1>Uloženo ✓</h1>${msg('Údaje máme. Teď můžete podepsat smlouvu.')}<button class="btn" id="d">Ke smlouvě</button>`;
-    document.getElementById('d').onclick = () => ukaz('dokumenty');
+    $app.innerHTML = S.osoba.forma_spoluprace === 'prilezitostna'
+      ? `<h1>Uloženo ✓</h1>${msg('Údaje máme. Smlouvu o příležitostné činnosti vám připraví kancelář.')}<button class="btn" id="d">Zpět na přehled</button>`
+      : `<h1>Uloženo ✓</h1>${msg('Údaje máme. Teď můžete podepsat smlouvu.')}<button class="btn" id="d">Ke smlouvě</button>`;
+    document.getElementById('d').onclick = () => ukaz(S.osoba.forma_spoluprace === 'prilezitostna' ? 'prehled' : 'dokumenty');
   };
 }
 
@@ -579,6 +657,9 @@ function stavSmlouvy(d) {
   return ['uzavřeno', 't-ok'];
 }
 function vDokumenty() {
+  if (!schvalena() || !vyzvan()) return ($app.innerHTML = '<h1>Smlouva</h1>' + msg('Smlouvu podepíšete až před vaší první akcí – kancelář vám dá vědět.', 'warn'));
+  if (!S.osoba.forma_spoluprace || S.osoba.forma_spoluprace === 'ico') return vForma();
+  if (S.osoba.forma_spoluprace === 'prilezitostna' && S.nastup?.potvrzeno_at) return ($app.innerHTML = '<h1>Smlouva</h1>' + msg('Smlouvu o příležitostné činnosti připraví kancelář podle vzoru Vixen. <span class="mute">(vzor dodá Vixen – DOPLNIT)</span>', 'warn'));
   if (!S.nastup?.potvrzeno_at) return ($app.innerHTML = '<h1>Smlouva</h1>' + msg('Nejdřív prosím vyplňte a potvrďte údaje pro smlouvu.', 'warn') + '<button class="btn" id="n">Vyplnit údaje</button>', document.getElementById('n').onclick = () => ukaz('nastup'));
   const bezSouhlasu = !S.nastup.email_smlouvy || !S.nastup.email_smlouvy_souhlas_at;
   const kPodpisu = S.dokumenty.find((d) => d.stav === 'k_podpisu');

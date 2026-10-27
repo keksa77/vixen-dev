@@ -140,3 +140,39 @@ body.verejna{--gold:#b39446;--gold-d:#8c7330;--zlata:#c4a655;--noc:#12101b;font-
 
 /* ochrana registrace: pole pro roboty, člověk ho nevidí */
 .past{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+/* výběr měst bez krajů (26. 10. 2026) */
+.oblast .rychle label{font-size:13px;padding:5px 10px}
+.hledej-mesto{position:relative;margin-top:10px}
+.hledej-mesto input{width:100%}
+.naseptavac{position:absolute;left:0;right:0;top:100%;z-index:20;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:4px;display:flex;flex-direction:column}
+.naseptavac button{background:none;border:0;text-align:left;padding:9px 10px;font:inherit;border-radius:8px;cursor:pointer}
+.naseptavac button:hover,.naseptavac button:focus{background:var(--gold-s)}
+.naseptavac .mute{padding:8px 10px}
+.vybrana{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px}
+.mesto-chip{display:inline-flex;align-items:center;gap:4px;background:var(--gold-s);border:1px solid var(--gold);border-radius:20px;padding:4px 6px 4px 12px}
+.mesto-chip button{border:0;background:none;cursor:pointer;color:var(--mute);font-size:13px;padding:0 4px}
+/* úřad práce výrazně */
+.up-otazka{border:2px solid var(--bad);background:var(--bad-s);border-radius:12px;padding:12px}
+.up-otazka>label:first-child{color:var(--bad);font-weight:700}
+.chk.velke{font-size:16px;padding:6px 0}
+/* rozcestník forma spolupráce */
+.formy{display:flex;flex-direction:column;gap:10px;margin:14px 0}
+.forma{text-align:left;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;font:inherit;cursor:pointer;display:flex;flex-direction:column;gap:4px}
+.forma b{font-size:16px}.forma span{color:var(--mute);font-size:14px}
+.forma:hover,.forma:focus{border-color:var(--gold);background:var(--gold-s)}
+/* kancelář: WhatsApp upozornění, nastavení (27. 10. 2026) */
+.wa-panel{flex-basis:100%;margin-top:8px}
+.wa-panel textarea{width:100%;margin:6px 0;font:inherit}
+.wa-tab{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+.wa-tab td{border-top:1px solid var(--line);padding:8px 6px;vertical-align:top}
+.wa-tab .wa-txt{white-space:pre-wrap;color:var(--mute);max-width:420px}
+.wa-tab .wa-tl{white-space:nowrap}.wa-tab .wa-tl .btn{margin:0 4px 4px 0}
+.wa-tab tr.wa-hotovo{background:var(--ok-s)}
+.nast{max-width:720px}
+.hromadne .wa-panel{display:block;background:#fff;color:var(--ink);border-radius:12px;padding:12px 14px}
+.hromadne .wa-panel .pozn{color:var(--mute)}
+.hromadne .wa-panel .akce{display:flex;gap:8px;flex-wrap:wrap}
+.hromadne .wa-panel .akce .btn{width:auto}
+.wa-tab b{color:var(--ink)}
+.hromadne .wa-panel .mute{color:var(--mute)}.hromadne .wa-panel .wa-hotovo .wa-stav{color:var(--ok);font-weight:600}

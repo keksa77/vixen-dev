@@ -188,11 +188,11 @@ async function menu(aktivni) {
   const [{ count }, { count: dotazy }] = await Promise.all([sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec'),
     sb.from('tiket').select('id', { count: 'exact', head: true }).in('stav', S.tbdb ? ['novy', 'resime'] : ['ceka_na_vas'])]);
   document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', ['lide', 'nastenka', 'prihlasky'].includes(aktivni));
-  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Registrace', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, 1], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
+  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Registrace', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, !(S.vedeni || S.tbdb)], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
   return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
-  $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, dotazy: vUvod })[b.dataset.v]()));
+  $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, nastaveni: vNastaveni, dotazy: vUvod })[b.dataset.v]()));
   horniPosuvniky();
 }
 
@@ -351,6 +351,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
       <dt>Může pracovat</dt><dd>${mistaText((o.osoba_okres || []).map((x) => x.okres_kod))}</dd>
       <dt>Zájem</dt><dd>${(o.zajem || []).map((z) => esc(ZAJEM[z] || z)).join(', ')}</dd>
       <dt>Kontakt přes</dt><dd>${(o.kanal_kontaktu || []).map((z) => esc(KANAL[z] || z)).join(', ')}</dd>
+    <dt>WhatsApp</dt><dd>${o.whatsapp_souhlas_at ? 'souhlas s upozorněními ' + datum(o.whatsapp_souhlas_at) : '<span class="mute">bez souhlasu</span>'}</dd>
       ${o.duvod ? `<dt>Důvod</dt><dd>${esc(DUVOD[o.duvod] || o.duvod)}</dd>` : ''}
       <dt>Souhlas</dt><dd>${o.souhlas_gdpr_at ? 'ano, ' + kdy(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd>
      </dl>
@@ -627,6 +628,8 @@ function hromadne() {
   el.innerHTML = `<b>Vybráno ${ids.length}</b>
     <button class="btn o mini" data-h="email">Kopírovat e-maily</button><button class="btn o mini" data-h="tel">Kopírovat telefony</button>
     <button class="btn o mini" data-h="pripom">Poslat připomínku e-mailem</button>
+    <button class="btn o mini" data-h="wa">Připravit WhatsApp upozornění</button>
+    <button class="btn o mini" data-h="vyzva">Požádat o údaje a smlouvu</button>
     <button class="btn o mini" data-h="csv">Export do Excelu (CSV)</button>
     <select id="hstav"><option value="">Změnit stav…</option>${Object.entries(STAV_O).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
     <button class="btn o mini" data-h="zrus">Zrušit výběr</button><span id="hinfo" class="mute"></span>`;
@@ -643,6 +646,18 @@ function hromadne() {
       el.querySelector('.potvrd-h').remove(); info(r.text.replace(/<[^>]+>/g, '')); };
   };
   el.querySelector('[data-h=csv]').onclick = () => { exportCsv(osoby); info('Soubor stažen.'); };
+  el.querySelector('[data-h=wa]').onclick = () => whatsappPanel(el, osoby);
+  el.querySelector('[data-h=vyzva]').onclick = () => {
+    el.querySelector('.potvrd-h')?.remove();
+    const tym = osoby.filter((o) => ['prijata', 'aktivni'].includes(o.stav) && !o.smlouva_vyzva_at);
+    el.insertAdjacentHTML('beforeend', `<div class="potvrd-h">${msg(`Požádat ${tym.length} lidí o údaje a smlouvu před první akcí? V aplikaci se jim odemknou Údaje a Smlouva. (Kdo už výzvu má nebo není přijatý, toho aplikace vynechá.)`, 'warn')}<button class="btn mini" data-ok>Ano, požádat</button> <button class="btn o mini" data-ne>Ne</button></div>`);
+    el.querySelector('[data-ne]').onclick = () => el.querySelector('.potvrd-h').remove();
+    el.querySelector('[data-ok]').onclick = async () => {
+      const { data, error } = await sb.rpc('kancelar_smlouva_vyzva', { p_osoby: tym.map((o) => o.id) });
+      if (error) return info(chyba(error));
+      S.vyber.clear(); vLide(msg(`Výzva ke smlouvě odeslána do aplikace ${data} lidem.`));
+    };
+  };
   el.querySelector('[data-h=zrus]').onclick = () => { S.vyber.clear(); vykresliTabulku(); };
   el.querySelector('#hstav').onchange = (e) => {
     const novy = e.target.value; if (!novy) return;
@@ -670,6 +685,63 @@ function exportCsv(osoby) {
   a.download = `vixen_lide_${new Date().toISOString().slice(0, 10)}.csv`; document.body.append(a); a.click(); a.remove();
 }
 
+// ---------- smlouva až před první akcí: výzva kanceláře a forma spolupráce (Vixen 26. 10. 2026) ----------
+const FORMA = { dpp: 'DPP + prohlášení poplatníka', ico: 'IČO – fakturuje', prilezitostna: 'příležitostná činnost' };
+function vyzvaHtml(o) {
+  const tym = ['prijata', 'aktivni'].includes(o.stav);
+  return `<dl><dt>Výzva ke smlouvě</dt><dd>${o.smlouva_vyzva_at ? 'požádáno ' + datum(o.smlouva_vyzva_at) : '<span class="mute">zatím ne – smlouva až před první akcí</span>'}</dd>
+    <dt>Forma spolupráce</dt><dd>${o.forma_spoluprace ? esc(FORMA[o.forma_spoluprace]) + (o.ico ? ' · IČO ' + esc(o.ico) : '') : '<span class="mute">nevybraná</span>'}</dd></dl>
+    ${tym ? `<button class="btn o mini" id="vyzva-btn">${o.smlouva_vyzva_at ? 'Zrušit výzvu ke smlouvě' : 'Požádat o údaje a smlouvu (před první akcí)'}</button><div id="vyzva-msg"></div>` : ''}`;
+}
+
+// ---------- WhatsApp upozornění: aplikace připraví text pro každého, kancelář odešle ručně ze svého WhatsAppu ----------
+const WA_TEXT = 'Dobrý den, {oslovení}, máme pro vás novou nabídku od Vixen. Podrobnosti najdete v aplikaci: {odkaz}\nOdpovídejte prosím v aplikaci. Děkujeme, Vixen';
+function whatsappPanel(el, osoby) {
+  el.querySelector('.potvrd-h')?.remove();
+  const s = osoby.filter((o) => o.whatsapp_souhlas_at && !o.neoslovovat), bez = osoby.filter((o) => !o.whatsapp_souhlas_at).length, neosl = osoby.filter((o) => o.whatsapp_souhlas_at && o.neoslovovat).length;
+  const odkaz = new URL('./', location.href).href;
+  el.insertAdjacentHTML('beforeend', `<div class="potvrd-h wa-panel"><b>WhatsApp upozornění</b> – ${s.length} lidí se souhlasem${bez ? ` · vynecháno ${bez} bez souhlasu` : ''}${neosl ? ` · ${neosl} neoslovovat` : ''}
+    <p class="pozn">Text se doplní pro každého. {oslovení} = jméno v 5. pádě, {odkaz} = odkaz do aplikace. Zprávy odesílejte z firemního WhatsAppu (WhatsApp Business) – po kliknutí se otevře chat s vloženým textem, stačí Enter. Hromadné automatické rozesílání WhatsApp nedovoluje.</p>
+    <textarea id="wa-text" rows="3">${esc(WA_TEXT)}</textarea>
+    <div class="akce"><button class="btn mini" data-wa-pripravit>Připravit zprávy</button> <button class="btn o mini" data-wa-zavrit>Zavřít</button></div><div id="wa-seznam"></div></div>`);
+  const panel = el.querySelector('.wa-panel');
+  panel.querySelector('[data-wa-zavrit]').onclick = () => panel.remove();
+  panel.querySelector('[data-wa-pripravit]').onclick = () => {
+    const vzor = panel.querySelector('#wa-text').value;
+    const text = (o) => vzor.split('{oslovení}').join(K.vokativ(o.jmeno)).split('{odkaz}').join(odkaz);
+    const box = panel.querySelector('#wa-seznam');
+    box.innerHTML = s.length ? `<table class="wa-tab">${s.map((o) => `<tr data-id="${o.id}"><td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b><br><span class="mute">${esc(o.telefon)}</span></td>
+      <td class="wa-txt">${esc(text(o))}</td><td class="wa-tl"><a class="btn mini" target="_blank" rel="noopener" href="https://wa.me/${o.telefon.replace(/\D/g, '')}?text=${encodeURIComponent(text(o))}">Otevřít ve WhatsAppu</a>
+      <button class="btn o mini" data-kop>Kopírovat text</button><span class="wa-stav mute"></span></td></tr>`).join('')}</table>` : '<p class="mute">Nikdo z vybraných nedal souhlas se zprávami přes WhatsApp.</p>';
+    box.querySelectorAll('tr').forEach((tr) => {
+      const o = s.find((x) => x.id === tr.dataset.id), t = text(o), stav = tr.querySelector('.wa-stav');
+      const zapis = async () => { const { error } = await sb.rpc('kancelar_whatsapp_zapis', { p_osoba: o.id, p_text: t });
+        stav.textContent = error ? 'nepodařilo se zapsat: ' + chyba(error) : 'odesláno ' + new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) + ' ✓';
+        if (!error) tr.classList.add('wa-hotovo'); };
+      tr.querySelector('a').addEventListener('click', zapis);
+      tr.querySelector('[data-kop]').onclick = async () => { try { await navigator.clipboard.writeText(t); zapis(); } catch { stav.textContent = 'Kopírování prohlížeč nepovolil.'; } };
+    });
+  };
+}
+
+// ---------- NASTAVENÍ (vedení, TBDB) ----------
+async function vNastaveni(hlaska = '') {
+  $app.innerHTML = `${await menu('nastaveni')}<p class="mute">Načítám…</p>`; zapniMenu();
+  const { data, error } = await sb.rpc('parametr_dnes', { p_kod: 'registrace_schvalovat' });
+  const sch = error ? true : data !== false;
+  $app.innerHTML = `${await menu('nastaveni')}<h1>Nastavení</h1>${hlaska}
+   <div class="card nast"><h2 style="margin-top:0">Registrace</h2>
+    <label class="chk"><input type="checkbox" id="n-schval"${sch ? ' checked' : ''}> <span><b>Nové registrace schvaluje kancelář</b><br>
+    <span class="mute">Zapnuto: nový člověk čeká v Registracích, dokud ho neschválíte. Vypnuto: po registraci je rovnou přijatý a může se hned přihlásit (s každým si stejně před akcí voláte).</span></span></label>
+    <div id="n-msg"></div></div>`;
+  zapniMenu();
+  document.getElementById('n-schval').onchange = async (e) => {
+    const { error: err } = await sb.rpc('kancelar_nastav', { p_kod: 'registrace_schvalovat', p_hodnota: e.target.checked });
+    document.getElementById('n-msg').innerHTML = err ? msg(esc(chyba(err)), 'bad') : msg(e.target.checked ? 'Uloženo ✓ Nové registrace budete schvalovat.' : 'Uloženo ✓ Noví lidé budou po registraci rovnou přijatí.');
+    if (err) e.target.checked = !e.target.checked;
+  };
+}
+
 // ---------- detail osoby (panel vpravo) ----------
 async function vDetailOsoby(id) {
   const o = S.lide.find((x) => x.id === id); if (!o) return;
@@ -683,11 +755,12 @@ async function vDetailOsoby(id) {
     <dt>Telefon</dt><dd>${esc(o.telefon)}</dd><dt>E-mail</dt><dd>${esc(o.email)}</dd><dt>Bydliště</dt><dd>${esc(o.obec || '')}</dd>
     <dt>Může pracovat</dt><dd>${mistaPodleKraju}</dd><dt>Zájem</dt><dd>${(o.zajem || []).map((z) => esc(ZAJEM[z] || z)).join(', ')}</dd>
     <dt>Kontakt přes</dt><dd>${(o.kanal_kontaktu || []).map((z) => esc(KANAL[z] || z)).join(', ')}</dd>
+    <dt>WhatsApp</dt><dd>${o.whatsapp_souhlas_at ? 'souhlas s upozorněními ' + datum(o.whatsapp_souhlas_at) : '<span class="mute">bez souhlasu</span>'}</dd>
     <dt>Souhlas</dt><dd>${o.souhlas_gdpr_at ? datum(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd></dl></section>
    <section><h3>Profil</h3>${o.ma_profil ? `<dl><dt>Výška</dt><dd>${p.vyska_cm ? p.vyska_cm + ' cm' : '–'}</dd><dt>Konfekce / bota</dt><dd>${esc(p.konfekce || '–')} / ${p.bota_eu || '–'}</dd>
      <dt>Jazyky</dt><dd>${esc((p.jazyky || []).join(', ') || '–')}</dd><dt>Řidičák / auto</dt><dd>${p.ridicak ? 'ano' : 'ne'} / ${p.vlastni_auto ? 'ano' : 'ne'}</dd>
      <dt>Dostupnost</dt><dd>${esc(p.dostupnost || '–')}</dd><dt>Zkušenosti</dt><dd>${esc(p.zkusenosti || '–')}</dd></dl>` : '<p class="mute">Profil zatím chybí.</p>'}</section>
-   <section><h3>Smlouva a podklady</h3><div id="det-smlouva"><p class="mute">${S.smlouvy ? 'Načítám…' : `Údaje pro smlouvu: <b>${o.udaje ? 'potvrzené' : 'chybí'}</b> · DPP: <b>${o.dpp ? DPP_TXT[o.dpp] + (o.dpp_at ? ' (' + datum(o.dpp_at) + ')' : '') : 'zatím ne'}</b><br>Podrobnosti vidí jen role Smlouvy.`}</p></div></section>
+   <section><h3>Smlouva a podklady</h3>${vyzvaHtml(o)}<div id="det-smlouva"><p class="mute">${S.smlouvy ? 'Načítám…' : `Údaje pro smlouvu: <b>${o.udaje ? 'potvrzené' : 'chybí'}</b> · DPP: <b>${o.dpp ? DPP_TXT[o.dpp] + (o.dpp_at ? ' (' + datum(o.dpp_at) + ')' : '') : 'zatím ne'}</b><br>Podrobnosti vidí jen role Smlouvy.`}</p></div></section>
    <section><h3>Stav a poznámka</h3><form id="det-f" novalidate>
     <div class="fld"><label>Stav</label><select id="det-stav">${Object.entries(STAV_O).map(([k, v]) => `<option value="${k}"${k === o.stav ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></div>
     <div class="fld${sDuvodem(o.stav) ? '' : ' hidden'}" id="det-duvod" data-f="duvod"><label>Důvod odmítnutí / vyřazení</label>${duvodVolba(o.duvod)}<div class="err"></div></div>
@@ -702,6 +775,11 @@ async function vDetailOsoby(id) {
   d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
   podepisFotky(o.fotky).then(() => d.querySelectorAll('#det-fotky img').forEach((img) => (img.src = S.fotoUrl[img.dataset.cesta] || '')));
   d.querySelector('#upravit').onclick = () => vUpravOsobu(o);
+  const vb = d.querySelector('#vyzva-btn');
+  if (vb) vb.onclick = async () => { vb.disabled = true;
+    const { error } = await sb.rpc('kancelar_smlouva_vyzva', { p_osoby: [id], p_zrusit: !!o.smlouva_vyzva_at });
+    if (error) { vb.disabled = false; return (d.querySelector('#vyzva-msg').innerHTML = msg(esc(chyba(error)), 'bad')); }
+    o.smlouva_vyzva_at = o.smlouva_vyzva_at ? null : new Date().toISOString(); vDetailOsoby(id); };
   d.querySelector('#det-stav').onchange = (e) => d.querySelector('#det-duvod').classList.toggle('hidden', !sDuvodem(e.target.value));
   d.querySelector('#det-f').onsubmit = async (e) => {
     e.preventDefault();
@@ -730,7 +808,7 @@ async function vDetailOsoby(id) {
   if (S.vedeni || S.tbdb) detailHistorie(o);
 }
 
-const ZPRAVA_TYP = { schvaleno: 'schválení registrace', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
+const ZPRAVA_TYP = { whatsapp_upozorneni: 'WhatsApp upozornění (odesláno ručně)', schvaleno: 'schválení registrace', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
 async function detailZpravy(o) {
   const box = document.getElementById('det-zpravy'); if (!box) return;
   const { data, error } = await sb.from('osoba_zprava').select('typ,vysledek,chyba,adresat,vytvoreno').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }).limit(10);
