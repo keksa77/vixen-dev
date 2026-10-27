@@ -378,7 +378,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
       <dt>Kontakt přes</dt><dd>${(o.kanal_kontaktu || []).map((z) => esc(KANAL[z] || z)).join(', ')}</dd>
     <dt>WhatsApp</dt><dd>${o.whatsapp_souhlas_at ? 'souhlas s upozorněními ' + datum(o.whatsapp_souhlas_at) : '<span class="mute">bez souhlasu</span>'}</dd>
       ${o.duvod ? `<dt>Důvod</dt><dd>${esc(DUVOD[o.duvod] || o.duvod)}</dd>` : ''}
-      <dt>Souhlas</dt><dd>${o.souhlas_gdpr_at ? 'ano, ' + kdy(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd>
+      <dt>Zásady (informace)</dt><dd>${o.souhlas_gdpr_at ? 'ano, ' + kdy(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd>
      </dl>
      <form class="rozh" novalidate>
       <div class="fld" data-f="pozn"><label>Interní poznámka (uchazeč ji neuvidí)</label><textarea rows="2" name="pozn" placeholder="Nepovinné – např. odkud o nás ví">${esc(o.osoba_poznamka?.text || '')}</textarea><div class="err"></div></div>
@@ -781,7 +781,7 @@ async function vDetailOsoby(id) {
     <dt>Může pracovat</dt><dd>${mistaPodleKraju}</dd><dt>Zájem</dt><dd>${(o.zajem || []).map((z) => esc(ZAJEM[z] || z)).join(', ')}</dd>
     <dt>Kontakt přes</dt><dd>${(o.kanal_kontaktu || []).map((z) => esc(KANAL[z] || z)).join(', ')}</dd>
     <dt>WhatsApp</dt><dd>${o.whatsapp_souhlas_at ? 'souhlas s upozorněními ' + datum(o.whatsapp_souhlas_at) : '<span class="mute">bez souhlasu</span>'}</dd>
-    <dt>Souhlas</dt><dd>${o.souhlas_gdpr_at ? datum(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd></dl></section>
+    <dt>Zásady (informace)</dt><dd>${o.souhlas_gdpr_at ? datum(o.souhlas_gdpr_at) + ' (verze ' + esc(o.souhlas_gdpr_v) + ')' : '<span class="no">chybí</span>'}</dd></dl></section>
    <section><h3>Profil</h3>${o.ma_profil ? `<dl><dt>Výška</dt><dd>${p.vyska_cm ? p.vyska_cm + ' cm' : '–'}</dd><dt>Konfekce / bota</dt><dd>${esc(p.konfekce || '–')} / ${p.bota_eu || '–'}</dd>
      <dt>Jazyky</dt><dd>${esc((p.jazyky || []).join(', ') || '–')}</dd><dt>Řidičák / auto</dt><dd>${p.ridicak ? 'ano' : 'ne'} / ${p.vlastni_auto ? 'ano' : 'ne'}</dd>
      <dt>Dostupnost</dt><dd>${esc(p.dostupnost || '–')}</dd><dt>Zkušenosti</dt><dd>${esc(p.zkusenosti || '–')}</dd></dl>` : '<p class="mute">Profil zatím chybí.</p>'}</section>

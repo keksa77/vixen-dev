@@ -134,6 +134,7 @@ async function start() {
   const { data } = await sb.auth.getSession();
   if (data.session) { await S.cisP; return poPrihlaseni(); }
   if (location.hash === '#registrace') { await S.cisP; return vRegistrace(); }
+  if (location.hash === '#plocha') return vInstalace(); // přímý odkaz na návod (např. ze zprávy WhatsApp)
   vUvod();
 }
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.osoba) poPrihlaseni(); });
@@ -182,10 +183,10 @@ function vRegistrace() {
      <label><input type="checkbox" name="zajem" value="hosteska" checked> hosteska</label>
      <label><input type="checkbox" name="zajem" value="promoter"> promotér/ka</label>
      <label><input type="checkbox" name="zajem" value="jine"> jiné</label></div><div class="err"></div></div>
-   <div class="oddil"><i>5</i>Nabídky a souhlas</div>
+   <div class="oddil"><i>5</i>Nabídky a upozornění</div>
    <p class="mute" style="margin-top:0">Nabídky akcí najdete v aplikaci, upozornění vám pošleme e-mailem.</p>
-   <label class="chk"><input type="checkbox" id="whatsapp"> Upozornění na nové nabídky mi můžete posílat i přes WhatsApp na můj telefon.</label>
-   <div class="fld" data-f="gdpr"><label class="chk"><input type="checkbox" id="gdpr"> <span>Souhlasím se zpracováním osobních údajů pro účely spolupráce s Vixen. <span class="mute">(text souhlasu dodá Vixen – DOPLNIT)</span></span></label><div class="err"></div></div>
+   <label class="chk wa-souhlas"><input type="checkbox" id="whatsapp"> <span><b>Chci vědět o nových akcích jako první – i na WhatsAppu</b><br>Nejlepší akce se obsadí rychle. Jakmile pro vás bude nová nabídka, pošleme krátkou zprávu na WhatsApp. Žádný spam, odhlásit se můžete kdykoli.</span></label>
+   <p class="mute gdpr-info">Odesláním registrace berete na vědomí <b>zásady zpracování osobních údajů</b> Vixen – údaje použijeme jen pro nabídky akcí a spolupráci s vámi. <span class="mute">(text zásad dodá Vixen – DOPLNIT)</span></p>
    <div class="past" aria-hidden="true"><label>Web <input id="web" name="web" tabindex="-1" autocomplete="off"></label></div>
    <button class="btn" type="submit">Odeslat registraci</button></form>
    <p class="mute" style="text-align:center"><a href="#" id="zpet">Už mám registraci – přihlásit</a></p>`;
@@ -214,7 +215,6 @@ function vRegistrace() {
     fotky: S.regFotky.length ? '' : 'Přidejte aspoň jednu fotku.',
     vyska: val('vyska') && (val('vyska') < 120 || val('vyska') > 220) ? 'Výška 120–220 cm.' : '',
     zajem: vyber('zajem').length ? '' : 'Vyberte aspoň jednu možnost.',
-    gdpr: val('gdpr') ? '' : 'Bez souhlasu vás nemůžeme evidovat.',
   });
   hlidejPole(kontrola);
   document.getElementById('f').onsubmit = async (e) => {
@@ -417,12 +417,44 @@ function zapniPlochu() {
   const poz = document.getElementById('plocha-pozdeji');   // „Později“ = připomeneme za 3 dny, karta zatím zůstane malá
   if (poz) poz.onclick = () => { try { localStorage.setItem('vixen_plocha_odlozit', String(Date.now() + 3 * 864e5)); } catch {} document.querySelector('.plocha')?.classList.add('mala'); poz.remove(); };
 }
+
+// obrázky k návodu na plochu: zjednodušená kresba obrazovky, růžový kroužek = kam klepnout
+const kruh = (x, y, r = 15) => `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="#e0245e" stroke-width="3"/><circle cx="${x}" cy="${y}" r="${r + 5}" fill="none" stroke="#e0245e" stroke-width="1.5" opacity=".4"/>`;
+const obr = (vnitrek, h = 130) => `<svg class="navod-obr" viewBox="0 0 260 ${h}" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect x=".5" y=".5" width="259" height="${h - 1}" rx="14" fill="#fff" stroke="#d9d4ca"/>${vnitrek}</svg>`;
+const radek = (y, t, ikona, zvyr) => `<rect x="14" y="${y}" width="232" height="30" rx="8" fill="${zvyr ? '#fde8ef' : '#f2f2f7'}"/><text x="26" y="${y + 20}" font-size="12.5" fill="#111" font-weight="${zvyr ? 700 : 400}">${t}</text><text x="232" y="${y + 21}" font-size="14" text-anchor="end" fill="#555">${ikona}</text>`;
+const NAVOD_OBR = {
+  // Facebook / Instagram: vestavěný prohlížeč, vpravo nahoře tři tečky → Otevřít v Safari / v prohlížeči
+  vestaveny: (ios) => obr(`<rect x="1" y="1" width="258" height="34" rx="13" fill="#f0f2f5"/><text x="14" y="23" font-size="15" fill="#555">✕</text><text x="130" y="22" font-size="11.5" text-anchor="middle" fill="#333">keksa77.github.io</text><text x="236" y="23" font-size="17" text-anchor="middle" fill="#111" font-weight="700">${ios ? '⋯' : '⋮'}</text>${kruh(236, 18)}
+    <path d="M236 40 L236 52" stroke="#e0245e" stroke-width="2" marker-end="url(#s)"/><defs><marker id="s" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#e0245e"/></marker></defs>
+    ${radek(58, 'Kopírovat odkaz', '🔗')}${radek(92, ios ? 'Otevřít v Safari' : 'Otevřít v prohlížeči', '🧭', true)}`),
+  // Safari: dole uprostřed tlačítko Sdílet
+  safari: () => obr(`<rect x="14" y="14" width="232" height="58" rx="8" fill="#f6f4ef"/><text x="130" y="48" font-size="13" text-anchor="middle" fill="#8c7740" font-weight="700">Vixen</text>
+    <rect x="1" y="84" width="258" height="45" rx="13" fill="#f2f2f7"/><text x="30" y="113" font-size="18" fill="#007aff">‹</text><text x="72" y="113" font-size="18" fill="#c7c7cc">›</text>
+    <path d="M124 112 h12 v-10 h-3 M124 102 h-3 v10 M130 108 V92 M125 97 l5 -5 5 5" stroke="#007aff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="188" y="113" font-size="16" fill="#007aff">📖</text><text x="230" y="113" font-size="16" fill="#007aff">⧉</text>${kruh(130, 104, 17)}`),
+  // nabídka Sdílet: řádek Přidat na plochu
+  sdilet: () => obr(`${radek(14, 'Kopírovat', '⧉')}${radek(50, 'Přidat do záložek', '📖')}${radek(86, 'Přidat na plochu', '⊞', true)}`),
+  // obrazovka Přidat na plochu: vpravo nahoře Přidat
+  pridat: () => obr(`<rect x="1" y="1" width="258" height="38" rx="13" fill="#f2f2f7"/><text x="16" y="25" font-size="13" fill="#007aff">Zrušit</text><text x="130" y="25" font-size="12.5" text-anchor="middle" font-weight="700" fill="#111">Přidat na plochu</text><text x="240" y="25" font-size="13.5" text-anchor="end" fill="#007aff" font-weight="700">Přidat</text>${kruh(221, 22, 17)}
+    <image href="ikony/ikona-192.png" x="20" y="56" width="52" height="52"/><text x="86" y="78" font-size="13" fill="#111">Vixen</text><text x="86" y="97" font-size="10.5" fill="#888">keksa77.github.io</text>`),
+  // Chrome: vpravo nahoře tři tečky
+  chrome: () => obr(`<rect x="1" y="1" width="258" height="40" rx="13" fill="#f1f3f4"/><text x="16" y="26" font-size="14" fill="#5f6368">⌂</text><rect x="38" y="9" width="170" height="24" rx="12" fill="#fff"/><text x="52" y="25" font-size="11" fill="#333">keksa77.github.io</text><text x="236" y="27" font-size="19" text-anchor="middle" fill="#202124" font-weight="700">⋮</text>${kruh(236, 21)}
+    <rect x="14" y="56" width="232" height="60" rx="8" fill="#f6f4ef"/><text x="130" y="91" font-size="13" text-anchor="middle" fill="#8c7740" font-weight="700">Vixen</text>`),
+  // nabídka Chrome: Přidat na plochu / Nainstalovat aplikaci
+  chromeMenu: () => obr(`${radek(14, 'Nová karta', '＋')}${radek(50, 'Historie', '🕘')}${radek(86, 'Přidat na plochu / Nainstalovat', '⊕', true)}`),
+  // potvrzení instalace
+  instalovat: () => obr(`<rect x="14" y="14" width="232" height="102" rx="12" fill="#f8f9fa" stroke="#e0e0e0"/><image href="ikony/ikona-192.png" x="28" y="28" width="38" height="38"/><text x="76" y="45" font-size="13" font-weight="700" fill="#111">Nainstalovat aplikaci?</text><text x="76" y="62" font-size="10.5" fill="#666">Vixen · keksa77.github.io</text>
+    <text x="110" y="100" font-size="12.5" fill="#1a73e8">Zrušit</text><text x="196" y="100" font-size="12.5" fill="#1a73e8" font-weight="700" text-anchor="middle">Instalovat</text><rect x="160" y="84" width="72" height="24" rx="12" fill="none" stroke="#e0245e" stroke-width="3"/>`),
+  // plocha telefonu s ikonou Vixen
+  plocha: () => obr(`<rect x="1" y="1" width="258" height="128" rx="13" fill="#2b3a55"/>${[0, 1, 2, 3].map((i) => `<rect x="${28 + i * 56}" y="16" width="40" height="40" rx="10" fill="#ffffff" opacity=".25"/>`).join('')}${[0, 1, 2].map((i) => `<rect x="${28 + i * 56}" y="70" width="40" height="40" rx="10" fill="#ffffff" opacity=".25"/>`).join('')}
+    <image href="ikony/ikona-192.png" x="196" y="70" width="40" height="40"/><text x="216" y="122" font-size="9.5" text-anchor="middle" fill="#fff">Vixen</text>${kruh(216, 90, 26)}`),
+};
 function vInstalace() {
-  const z = zarizeni(), kroky = [];
-  if (z.vestaveny) kroky.push(`Teď máte stránku otevřenou uvnitř Facebooku nebo Instagramu – odtud na plochu přidat nejde. Klepněte vpravo nahoře na <b>⋯</b> (nebo <b>⋮</b>) a zvolte <b>Otevřít v ${z.ios ? 'Safari' : 'prohlížeči (Chrome)'}</b>. Pak pokračujte podle kroků níže.`);
-  if (z.ios) kroky.push('V Safari klepněte dole na <b>Sdílet</b> (čtvereček se šipkou nahoru).', 'Posuňte nabídku níž a klepněte na <b>Přidat na plochu</b>.', 'Vpravo nahoře klepněte na <b>Přidat</b>. Na ploše máte ikonu <b>Vixen</b>.');
-  else kroky.push('V Chrome klepněte vpravo nahoře na <b>⋮</b> (tři tečky).', 'Zvolte <b>Přidat na plochu</b> nebo <b>Nainstalovat aplikaci</b>.', 'Potvrďte <b>Přidat / Instalovat</b>. Na ploše máte ikonu <b>Vixen</b>.');
-  kroky.push('Příště otevírejte Vixen klepnutím na ikonu na ploše.');
+  const z = zarizeni(), kroky = [], O = NAVOD_OBR;
+  if (z.vestaveny) kroky.push(`Teď máte stránku otevřenou uvnitř Facebooku nebo Instagramu – odtud na plochu přidat nejde. Klepněte vpravo nahoře na <b>⋯</b> (nebo <b>⋮</b>) a zvolte <b>Otevřít v ${z.ios ? 'Safari' : 'prohlížeči (Chrome)'}</b>. Pak pokračujte podle kroků níže.` + O.vestaveny(z.ios));
+  if (z.ios) kroky.push('V Safari klepněte dole na <b>Sdílet</b> (čtvereček se šipkou nahoru).' + O.safari(), 'Posuňte nabídku níž a klepněte na <b>Přidat na plochu</b>.' + O.sdilet(), 'Vpravo nahoře klepněte na <b>Přidat</b>. Na ploše máte ikonu <b>Vixen</b>.' + O.pridat());
+  else kroky.push('V Chrome klepněte vpravo nahoře na <b>⋮</b> (tři tečky).' + O.chrome(), 'Zvolte <b>Přidat na plochu</b> nebo <b>Nainstalovat aplikaci</b>.' + O.chromeMenu(), 'Potvrďte <b>Přidat / Instalovat</b>. Na ploše máte ikonu <b>Vixen</b>.' + O.instalovat());
+  kroky.push('Příště otevírejte Vixen klepnutím na ikonu na ploše.' + O.plocha());
   $app.innerHTML = `<section class="hero mala"><div class="linka"></div><div class="nad">Aplikace na ploše</div><h1>Vixen na ploše telefonu</h1><p>${PLOCHA_DUVOD}</p></section>
     <div class="card"><ol class="navod">${kroky.map((k) => `<li>${k}</li>`).join('')}</ol>
     ${!z.ios && S.instalace ? '<button class="btn" id="i-pridat">Přidat na plochu</button>' : ''}
