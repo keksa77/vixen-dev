@@ -281,7 +281,7 @@ function vPrihlaseni() {
 function vKod(email, znovu) {
   $app.innerHTML = `<h1>Mrkněte do e-mailu</h1>${msg('Poslali jsme e-mail na ' + esc(email) + '.')}
    <form id="fk" class="card" novalidate><p style="margin-top:0">Klikněte na odkaz v e-mailu, <b>nebo sem opište kód</b> z e-mailu – to funguje vždy, i v aplikaci na ploše.</p>
-   <div class="fld" data-f="kod"><label for="kod">Kód z e-mailu</label><input id="kod" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="12345678"><div class="err"></div></div>
+   <div class="fld" data-f="kod"><label for="kod">Kód z e-mailu</label><input id="kod" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="123456"><div class="err"></div></div>
    <button class="btn" type="submit">Přihlásit kódem</button></form>
    <p class="mute" style="text-align:center"><a href="#" id="znovu">Poslat e-mail znovu</a> · <a href="#" id="jiny">Jiný e-mail</a></p>`;
   document.getElementById('kod').focus();
@@ -290,7 +290,7 @@ function vKod(email, znovu) {
   document.getElementById('fk').onsubmit = async (e) => {
     e.preventDefault();
     const kod = K.cisla(document.getElementById('kod').value), f = document.querySelector('[data-f=kod]');
-    if (kod.length < 6) { f.classList.add('chyba'); f.querySelector('.err').textContent = 'Opište celý kód z e-mailu (8 číslic).'; return; }
+    if (kod.length < 6) { f.classList.add('chyba'); f.querySelector('.err').textContent = 'Opište celý kód z e-mailu (6 číslic).'; return; }
     const b = e.target.querySelector('button'); b.disabled = true; b.textContent = 'Přihlašuji…';
     const { error } = await sb.auth.verifyOtp({ email, token: kod, type: 'email' });
     if (error) { b.disabled = false; b.textContent = 'Přihlásit kódem'; f.classList.add('chyba'); f.querySelector('.err').textContent = /expired|invalid/i.test(error.message || '') ? 'Kód nesedí nebo už vypršel. Zkontrolujte ho, nebo si pošlete nový.' : K.prelozChybu(error.message); }
