@@ -278,6 +278,13 @@ async function poPrihlaseni() {
   const { data: { user } } = await sb.auth.getUser();
   const { data: id, error } = await sb.rpc('propoj_ucet');
   if (error || !id) {
+    // účet kanceláře / TBDB není hosteska – nabídnout kancelář místo registrace
+    const [{ data: nabor }, { data: admin }] = await Promise.all([sb.rpc('ma_pravo', { p: 'nabor' }), sb.rpc('ma_pravo', { p: 'superadmin' })]);
+    if (nabor || admin) {
+      $app.innerHTML = msg('Účet ' + esc(user?.email) + ' je účet kanceláře, ne hostesky. Pokračujte do kanceláře.', 'warn') + '<a class="btn" href="kancelar.html">Do kanceláře</a>';
+      document.getElementById('odhlasit').classList.remove('hidden');
+      return;
+    }
     $app.innerHTML = msg('E-mail ' + esc(user?.email) + ' v evidenci nemáme. Zaregistrujte se prosím stejným e-mailem.', 'warn') + '<button class="btn" id="r">Registrace</button>';
     document.getElementById('odhlasit').classList.remove('hidden');
     document.getElementById('r').onclick = async () => { await sb.auth.signOut(); await S.cisP; vRegistrace(); };
