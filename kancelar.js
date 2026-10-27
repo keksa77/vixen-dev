@@ -44,11 +44,11 @@ async function start() {
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.user) poPrihlaseni(); });
 
 function vPrihlaseni() {
-  $app.innerHTML = `<h1>Kancelář Vixen</h1><p class="mute">Přihlaste se e-mailem – pošleme odkaz.</p>
+  $app.innerHTML = `<h1>Kancelář Vixen</h1><p class="mute">Přihlaste se e-mailem – pošleme odkaz a kód.</p>
    <form id="f" class="card" novalidate>
     <div class="fld" data-f="email"><label for="email">E-mail</label><input id="email" type="email" autocomplete="email"><div class="err"></div></div>
     ${DEV ? '<div class="fld" data-f="heslo"><label for="heslo">Heslo (jen pro testy ve vývoji)</label><input id="heslo" type="password"><div class="err"></div></div>' : ''}
-    <button class="btn" type="submit">${DEV ? 'Přihlásit' : 'Poslat odkaz'}</button></form>`;
+    <button class="btn" type="submit">${DEV ? 'Přihlásit' : 'Poslat e-mail'}</button></form>`;
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     const email = document.getElementById('email').value.trim().toLowerCase();
@@ -59,9 +59,33 @@ function vPrihlaseni() {
       : await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.href.split('#')[0] } });
     if (error) return chybaFormu(e.target, chyba(error));
     if (heslo) return poPrihlaseni();
-    $app.innerHTML = `<h1>Mrkněte do e-mailu</h1>${msg('Poslali jsme odkaz na ' + esc(email) + '.')}`;
+    const znovu = async () => { const { error: err } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.href.split('#')[0] } });
+      if (err) chybaFormu(document.getElementById('fk'), chyba(err)); else vKod(email, znovu); };
+    vKod(email, znovu);
   };
 }
+
+// přihlášení kódem z e-mailu (27. 10. 2026): odkaz i kód; kód funguje i v aplikaci na ploše iPhonu a na jiném zařízení
+function vKod(email, znovu) {
+  $app.innerHTML = `<h1>Mrkněte do e-mailu</h1>${msg('Poslali jsme e-mail na ' + esc(email) + '.')}
+   <form id="fk" class="card" novalidate><p style="margin-top:0">Klikněte na odkaz v e-mailu, <b>nebo sem opište kód</b> z e-mailu – to funguje vždy, i v aplikaci na ploše.</p>
+   <div class="fld" data-f="kod"><label for="kod">Kód z e-mailu</label><input id="kod" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"><div class="err"></div></div>
+   <button class="btn" type="submit">Přihlásit kódem</button></form>
+   <p class="mute" style="text-align:center"><a href="#" id="znovu">Poslat e-mail znovu</a> · <a href="#" id="jiny">Jiný e-mail</a></p>`;
+  document.getElementById('kod').focus();
+  document.getElementById('znovu').onclick = (e) => { e.preventDefault(); znovu(); };
+  document.getElementById('jiny').onclick = (e) => { e.preventDefault(); vPrihlaseni(); };
+  document.getElementById('fk').onsubmit = async (e) => {
+    e.preventDefault();
+    const kod = K.cisla(document.getElementById('kod').value), f = document.querySelector('[data-f=kod]');
+    if (kod.length < 6) { f.classList.add('chyba'); f.querySelector('.err').textContent = 'Kód má 6 číslic.'; return; }
+    const b = e.target.querySelector('button'); b.disabled = true; b.textContent = 'Přihlašuji…';
+    const { error } = await sb.auth.verifyOtp({ email, token: kod, type: 'email' });
+    if (error) { b.disabled = false; b.textContent = 'Přihlásit kódem'; f.classList.add('chyba'); f.querySelector('.err').textContent = /expired|invalid/i.test(error.message || '') ? 'Kód nesedí nebo už vypršel. Zkontrolujte ho, nebo si pošlete nový.' : K.prelozChybu(error.message); }
+    // úspěch: přihlášení dokončí onAuthStateChange (SIGNED_IN)
+  };
+}
+
 
 async function poPrihlaseni() {
   const { data: { user } } = await sb.auth.getUser();
