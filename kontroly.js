@@ -109,5 +109,23 @@ function jazykyHodnota(root) {
   if (root.querySelector('.jazyk-jine-chk')?.checked) v.push(...root.querySelector('.jazyk-jine').value.split(',').map((x) => x.trim()).filter(Boolean));
   return [...new Set(v)];
 }
-window.K = { jazykyHtml, jazykyZapni, jazykyHodnota, vokativ, cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
+// srozumitelné české hlášky místo anglických chyb přihlášení a sítě (Supabase Auth)
+const CHYBY_EN = [
+  ['signups not allowed', 'Tento e-mail u nás nemá účet. Použijte e-mail, ke kterému máte přístup.'],
+  ['email rate limit exceeded', 'Za krátkou dobu odešlo moc e-mailů. Zkuste to prosím znovu za chvíli.'],
+  ['over_email_send_rate_limit', 'Za krátkou dobu odešlo moc e-mailů. Zkuste to prosím znovu za chvíli.'],
+  ['for security purposes, you can only request this after', 'Nový odkaz si můžete poslat až za chvíli (z bezpečnostních důvodů).'],
+  ['invalid login credentials', 'Nesprávný e-mail nebo heslo.'],
+  ['email not confirmed', 'E-mail zatím není potvrzený – klikněte na odkaz, který vám přišel.'],
+  ['unable to validate email address', 'Zkontrolujte e-mailovou adresu.'],
+  ['token has expired or is invalid', 'Odkaz už vypršel nebo byl použitý. Pošlete si nový.'],
+  ['otp_expired', 'Odkaz už vypršel nebo byl použitý. Pošlete si nový.'],
+  ['email link is invalid or has expired', 'Odkaz už vypršel nebo byl použitý. Pošlete si nový.'],
+  ['jwt expired', 'Přihlášení vypršelo – přihlaste se prosím znovu.'],
+  ['user already registered', 'Tento e-mail už je zaregistrovaný.'],
+  ['failed to fetch', 'Nepodařilo se spojit se serverem. Zkontrolujte připojení k internetu.'],
+  ['networkerror', 'Nepodařilo se spojit se serverem. Zkontrolujte připojení k internetu.'],
+];
+const prelozChybu = (m) => { const t = String(m || '').toLowerCase(); const x = CHYBY_EN.find(([k]) => t.includes(k)); return x ? x[1] : m; };
+window.K = { prelozChybu, jazykyHtml, jazykyZapni, jazykyHodnota, vokativ, cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
 })();

@@ -33,7 +33,8 @@ function chybaFormu(form, text) {
   box.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 const kdy = (d) => new Date(d).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
-const chyba = (e) => (e && (e.message || e.error_description)) || String(e);
+const chyba = (e) => { const m = (e && (e.message || e.error_description)) || String(e);
+  return /signups not allowed/i.test(m) ? 'Tento e-mail nemá přístup do kanceláře. Přihlaste se e-mailem, ke kterému vám TBDB nastavilo přístup.' : K.prelozChybu(m); };
 document.getElementById('odhlasit').onclick = async () => { if (window.VIXEN_DEMO) return (location.href = location.pathname); await sb.auth.signOut(); location.reload(); };
 
 async function start() {

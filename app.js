@@ -39,7 +39,7 @@ function chybaText(e) {
     ['Invalid login credentials', 'Nesprávný e-mail nebo heslo.'],
   ];
   for (const [k, v] of map) if (m.includes(k)) return v;
-  return m;
+  return K.prelozChybu(m);
 }
 
 // ---------- pole formuláře ----------
