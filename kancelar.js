@@ -212,12 +212,12 @@ async function menu(aktivni) {
   if (!S.nabor) return '';
   const [{ count }, { count: dotazy }] = await Promise.all([sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec'),
     sb.from('tiket').select('id', { count: 'exact', head: true }).in('stav', S.tbdb ? ['novy', 'resime'] : ['ceka_na_vas'])]);
-  document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', ['lide', 'nastenka', 'prihlasky'].includes(aktivni));
-  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Registrace', count], ['akce', 'Akce', null, 1], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, !(S.vedeni || S.tbdb)], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
+  document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', ['lide', 'nastenka', 'prihlasky', 'akce'].includes(aktivni));
+  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Registrace', count], ['akce', 'Akce'], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, !(S.vedeni || S.tbdb)], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
   return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
-  $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, nastaveni: vNastaveni, dotazy: vUvod })[b.dataset.v]()));
+  $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, akce: vAkce, nastaveni: vNastaveni, dotazy: vUvod })[b.dataset.v]()));
   horniPosuvniky();
 }
 
@@ -239,8 +239,9 @@ function horniPosuvniky() {
 // ---------- NÁSTĚNKA: „Dnes je potřeba“ ----------
 async function vNastenka() {
   $app.innerHTML = `${await menu('nastenka')}<p class="mute">Načítám…</p>`; zapniMenu();
-  try { await nactiLidi(); } catch (e) { $app.innerHTML = (await menu('nastenka')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
+  try { await Promise.all([nactiLidi(), nactiAkce().catch(() => (S.akce = S.akce || []))]); } catch (e) { $app.innerHTML = (await menu('nastenka')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
   const tym = S.lide.filter((o) => ['prijata', 'aktivni'].includes(o.stav));
+  const tyden = S.akce.filter((a) => a.stav !== 'zrusena' && a.datum >= dnesIso() && a.datum <= posunDen(dnesIso(), 7));
   const dlazdice = [
     ['y', S.lide.filter((o) => o.stav === 'uchazec').length, 'nových registrací', () => vPrihlasky()],
     ['r', tym.filter((o) => o.dpp === 'ceka_vixen').length, 'smluv čeká na váš podpis', () => lideFiltr({ dpp: 'vixen' })],
@@ -253,9 +254,10 @@ async function vNastenka() {
   $app.innerHTML = `${await menu('nastenka')}<h1>Dnes je potřeba</h1><p class="mute">Počítá se z přijatých a aktivních lidí (${tym.length}). Kliknutím na dlaždici otevřete seznam.</p>
    <div class="tiles">${dlazdice.map(([c, n, t], i) => `<button class="tile ${n ? c : 'g'}" data-i="${i}"><div class="n">${n}</div>${t}</button>`).join('')}
     <div class="tile seda"><div class="n">–</div>nepřihlášeno ČSSZ<small>připravujeme</small></div><div class="tile seda"><div class="n">–</div>neobsazená místa na akcích<small>připravujeme</small></div></div>
-   <h2>Akce tento týden</h2><p class="mute">Akce a obsazování připravujeme – tady bude přehled obsazení a smluv pro každou akci.</p>`;
+   <h2>Akce v příštích 7 dnech</h2>${tyden.length ? `<div class="ak-tyden">${tyden.map((a) => `<button class="ak-den" data-id="${a.id}"><b>${denAkce(a.datum)} · ${cas(a.sraz_cas)}</b>${esc(a.nazev)}<small>${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · ${a.pocet_lidi} lidí${a.klient ? ' · ' + esc(a.klient.nazev) : ''}</small></button>`).join('')}</div>` : '<p class="mute">Žádná akce. Novou založíte v menu Akce.</p>'}<p class="mute">Obsazení a smlouvy u každé akce přibudou s nabídkami (etapa B).</p>`;
   zapniMenu();
   $app.querySelectorAll('.tile[data-i]').forEach((t) => (t.onclick = () => dlazdice[t.dataset.i][3]()));
+  $app.querySelectorAll('.ak-den').forEach((b) => (b.onclick = () => vAkceForm(S.akce.find((a) => a.id === b.dataset.id))));
 }
 function lideFiltr(f) { F = { ...F0(), ...f }; ulozF(); STRANA = 0; vLide(); }
 
@@ -746,6 +748,239 @@ function whatsappPanel(el, osoby) {
       tr.querySelector('a').addEventListener('click', zapis);
       tr.querySelector('[data-kop]').onclick = async () => { try { await navigator.clipboard.writeText(t); zapis(); } catch { stav.textContent = 'Kopírování prohlížeč nepovolil.'; } };
     });
+  };
+}
+
+// ---------- AKCE (modul 2, etapa A): seznam, založení, úprava, kopie, zrušení ----------
+// Akce = jeden den, jeden sraz; vícedenní akce se zakládá kopií. Klient s fakturačními údaji se vybírá znovu.
+const DEN_T = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+const isoDen = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const dnesIso = () => isoDen(new Date());
+const posunDen = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return isoDen(d); };
+const denAkce = (iso) => { const d = new Date(iso + 'T12:00:00'); return `${DEN_T[d.getDay()]} ${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`; };
+const cas = (t) => (t ? String(t).slice(0, 5) : '');
+const KONTAKT_ROLE = [['primarni', 'Primární kontakt'], ['na_akci', 'Kontakt na akci'], ['dalsi', 'Další kontakt'], ['dalsi', 'Další kontakt']];
+const mapa = (adresa) => adresa ? `<span class="ak-mapa">Otevřít v mapě: <a href="https://mapy.com/fnc/v1/search?query=${encodeURIComponent(adresa)}" target="_blank" rel="noopener">Mapy.cz</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(adresa)}" target="_blank" rel="noopener">Google Maps</a></span>` : '';
+const AK = { filtr: 'nadchazejici', hledat: '' };
+const AK_FILTR = { nadchazejici: 'Nadcházející', probehle: 'Proběhlé', zrusene: 'Zrušené' };
+const akceVeFiltru = (a, f) => (f === 'zrusene' ? a.stav === 'zrusena' : a.stav !== 'zrusena' && (f === 'probehle' ? a.datum < dnesIso() : a.datum >= dnesIso()));
+
+async function nactiAkce() {
+  await ciselniky();
+  const [a, k] = await Promise.all([sb.from('akce').select('*, klient(*)').order('datum').order('sraz_cas'), sb.from('klient').select('*').order('nazev')]);
+  if (a.error) throw a.error; if (k.error) throw k.error;
+  S.akce = (a.data || []).map((x) => { const klient = Array.isArray(x.klient) ? x.klient[0] || null : x.klient;
+    return { ...x, klient, hledej: bezDiakritiky([x.nazev, x.adresa, klient?.nazev, S.cis.okres[x.okres_kod]?.mesto].join(' ')) }; });
+  S.klienti = k.data || [];
+}
+
+async function vAkce(hlaska = '') {
+  $app.innerHTML = `${await menu('akce')}<p class="mute">Načítám…</p>`; zapniMenu();
+  try { await nactiAkce(); } catch (e) { $app.innerHTML = (await menu('akce')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
+  const pocty = Object.fromEntries(Object.keys(AK_FILTR).map((f) => [f, S.akce.filter((a) => akceVeFiltru(a, f)).length]));
+  $app.innerHTML = `${await menu('akce')}<div class="reg-hlava"><h1>Akce</h1>
+    <div class="reg-taby">${Object.entries(AK_FILTR).map(([f, t]) => `<button data-f="${f}"${AK.filtr === f ? ' class="on"' : ''}>${t}<b>${pocty[f]}</b></button>`).join('')}</div>
+    <input type="search" id="ak-hledat" placeholder="Hledat akci, klienta, město…" value="${esc(AK.hledat)}"><button class="btn mini" id="ak-nova">+ Nová akce</button></div>
+   ${hlaska}<div class="tab-obal"><table class="lide-tab ak-tab"><thead><tr><th>Datum</th><th>Sraz</th><th>Akce</th><th>Klient</th><th>Město</th><th>Lidí</th><th>Uzávěrka</th></tr></thead><tbody id="ak-telo"></tbody></table></div>`;
+  zapniMenu();
+  const vykresli = () => {
+    const h = bezDiakritiky(AK.hledat.trim());
+    let l = S.akce.filter((a) => akceVeFiltru(a, AK.filtr) && (!h || a.hledej.includes(h)));
+    if (AK.filtr !== 'nadchazejici') l = l.reverse();
+    document.getElementById('ak-telo').innerHTML = l.length ? l.map((a) => `<tr data-id="${a.id}"${a.datum === dnesIso() ? ' class="ak-dnes"' : ''}>
+      <td class="nw"><b>${denAkce(a.datum)}</b>${a.datum === dnesIso() ? '<small>dnes</small>' : ''}</td><td class="nw">${cas(a.sraz_cas)}${a.prace_od ? `<small>práce ${cas(a.prace_od)}–${cas(a.prace_do)}</small>` : ''}</td>
+      <td><b>${esc(a.nazev)}</b>${a.stav === 'zrusena' ? ' <span class="tag t-r">zrušená</span>' : ''}<small>${esc(a.adresa)}</small></td>
+      <td>${esc(a.klient?.nazev || '–')}</td><td>${esc(S.cis.okres[a.okres_kod]?.mesto || a.okres_kod)}</td><td>${a.pocet_lidi}</td>
+      <td class="nw">${a.uzaverka ? kdy(a.uzaverka) : '–'}</td></tr>`).join('')
+      : `<tr><td colspan="7" class="prazdno">${h ? 'Hledání nic nenašlo.' : AK.filtr === 'nadchazejici' ? 'Žádná nadcházející akce. Založte ji tlačítkem „+ Nová akce“.' : 'Nic tu není.'}</td></tr>`;
+    document.querySelectorAll('#ak-telo tr[data-id]').forEach((r) => (r.onclick = () => vAkceForm(S.akce.find((a) => a.id === r.dataset.id))));
+  };
+  vykresli();
+  $app.querySelectorAll('.reg-taby button').forEach((b) => (b.onclick = () => { AK.filtr = b.dataset.f; vAkce(); }));
+  document.getElementById('ak-hledat').oninput = (e) => { AK.hledat = e.target.value; vykresli(); };
+  document.getElementById('ak-nova').onclick = () => vAkceForm(null);
+}
+
+// podepsaný odkaz na fotku oblečení (soukromé úložiště 'akce')
+async function fotkaAkce(cesta) {
+  if (!cesta) return '';
+  if (S.fotoUrl[cesta]) return S.fotoUrl[cesta];
+  if (window.VIXEN_DEMO) return '';
+  const { data } = await sb.storage.from('akce').createSignedUrl(cesta, 3600);
+  return (S.fotoUrl[cesta] = data?.signedUrl || '');
+}
+
+async function vAkceForm(a, hlaska = '') {
+  await ciselniky();
+  if (!S.klienti) await nactiAkce();
+  const nova = !a; a = a || { obleceni: 'klient', kontakt_vixen: { jmeno: S.jmeno }, kontakty_klient: [], pozadavky: {} };
+  const kl = a.klient || {}, kv = a.kontakt_vixen || {}, poz = a.pozadavky || {}, zrusena = a.stav === 'zrusena', probehla = !nova && a.datum < dnesIso();
+  // kontakty za klienta do 4 řádků podle role (primární, na akci, 2× další)
+  const kk = [...a.kontakty_klient], radky = KONTAKT_ROLE.map(([role]) => { const i = kk.findIndex((x) => x.role === role); return i >= 0 ? kk.splice(i, 1)[0] : {}; });
+  const pole = (id, label, val, typ = 'text', extra = '') => `<div class="fld" data-f="${id}"><label for="a-${id}">${label}</label><input id="a-${id}" type="${typ}" value="${esc(val ?? '')}"${extra}><div class="err"></div></div>`;
+  const okresy = Object.entries(S.cis.kraj).sort((x, y) => x[1].localeCompare(y[1], 'cs')).map(([kod, kn]) => `<optgroup label="${esc(kn)}">${Object.values(S.cis.okres).filter((o) => o.kraj_kod === kod).sort((x, y) => x.mesto.localeCompare(y.mesto, 'cs'))
+    .map((o) => `<option value="${o.kod}"${o.kod === a.okres_kod ? ' selected' : ''}>${esc(o.mesto)}</option>`).join('')}</optgroup>`).join('');
+  const uzav = a.uzaverka ? isoDen(new Date(a.uzaverka)) + 'T' + new Date(a.uzaverka).toTimeString().slice(0, 5) : '';
+  $app.innerHTML = `${await menu('akce')}<div class="ak-hlava"><button class="btn o mini" id="ak-zpet">← Akce</button>
+    <h1>${nova ? 'Nová akce' : esc(a.nazev)}</h1>${zrusena ? '<span class="tag t-r">zrušená</span>' : probehla ? '<span class="tag t-b">proběhla</span>' : ''}</div>
+   ${zrusena ? msg('Akce je zrušená: ' + esc(a.zruseni_duvod || ''), 'bad') : ''}${hlaska}
+   <form id="ak-f" class="ak-form" novalidate>
+    <section class="card"><h2>Akce</h2>
+     ${pole('nazev', 'Název akce', a.nazev, 'text', ' placeholder="např. Ochutnávka kávy v obchodním centru"')}
+     <div class="ak-2">${pole('datum', 'Datum', a.datum, 'date')}
+      <div class="fld" data-f="okres"><label for="a-okres">Město (podle něj se vybírají lidé)</label><select id="a-okres"><option value="">– vyberte –</option>${okresy}</select><div class="err"></div></div></div>
+     ${pole('adresa', 'Adresa', a.adresa, 'text', ' placeholder="ulice a číslo, obec – lidé podle ní najdou cestu"')}<div id="a-mapa">${mapa(a.adresa)}</div>
+     <div class="ak-3">${pole('sraz_cas', 'Sraz v', cas(a.sraz_cas), 'time')}${pole('prace_od', 'Práce od', cas(a.prace_od), 'time')}${pole('prace_do', 'Práce do', cas(a.prace_do), 'time')}</div>
+     ${pole('sraz_misto', 'Místo srazu (nepovinné)', a.sraz_misto, 'text', ' placeholder="např. u hlavního vchodu"')}</section>
+
+    <section class="card"><h2>Klient a fakturace</h2>
+     <div class="fld" data-f="klient"><label for="a-klient">Klient</label><select id="a-klient"><option value="">+ nový klient</option>${S.klienti.map((k) => `<option value="${k.id}"${k.id === kl.id ? ' selected' : ''}>${esc(k.nazev)}${k.ico ? ' · IČO ' + esc(k.ico) : ''}</option>`).join('')}</select><div class="err"></div></div>
+     <div class="ak-2">${pole('k_nazev', 'Název klienta', kl.nazev)}${pole('k_ico', 'IČO', kl.ico, 'text', ' inputmode="numeric" maxlength="10"')}</div>
+     <div class="ak-2">${pole('k_dic', 'DIČ (nepovinné)', kl.dic, 'text', ' placeholder="CZ12345678"')}${pole('k_email', 'E-mail pro faktury', kl.fakturacni_email, 'email')}</div>
+     ${pole('k_adresa', 'Fakturační adresa', kl.fakturacni_adresa)}
+     <p class="pozn">Fakturační údaje patří klientovi – změna se projeví u všech jeho akcí.</p></section>
+
+    <section class="card"><h2>Kontakty</h2>
+     <h3>Za Vixen</h3><div class="ak-2">${pole('v_jmeno', 'Jméno', kv.jmeno)}${pole('v_telefon', 'Telefon', kv.telefon, 'tel')}</div>
+     <h3>Za klienta</h3>
+     ${KONTAKT_ROLE.map(([role, t], i) => `<div class="ak-kontakt" data-role="${role}"><b>${t}${i > 1 ? ' <span class="mute">(nepovinné)</span>' : ''}</b>
+      <div class="ak-3">${pole('kk' + i + '_jmeno', 'Jméno', radky[i].jmeno)}${pole('kk' + i + '_telefon', 'Telefon', radky[i].telefon, 'tel')}${pole('kk' + i + '_email', 'E-mail', radky[i].email, 'email')}</div></div>`).join('')}</section>
+
+    <section class="card"><h2>Oblečení</h2>
+     <div class="chips" data-f="obleceni"><label><input type="radio" name="obleceni" value="klient"${a.obleceni !== 'vlastni' ? ' checked' : ''}> od klienta</label><label><input type="radio" name="obleceni" value="vlastni"${a.obleceni === 'vlastni' ? ' checked' : ''}> vlastní</label></div>
+     <div class="fld" data-f="obleceni_popis"><label for="a-obleceni_popis">Popis</label><textarea id="a-obleceni_popis" rows="2" placeholder="např. černé kalhoty, bílá košile, pohodlné černé boty">${esc(a.obleceni_popis || '')}</textarea><div class="err"></div></div>
+     <div class="fld" data-f="foto"><label for="a-foto">Fotka, jak má oblečení vypadat (nepovinné)</label><div class="ak-foto" id="a-foto-nahled"></div>
+      <input type="file" id="a-foto" accept="image/jpeg,image/png,image/webp">${a.obleceni_foto ? ' <label class="chk mini"><input type="checkbox" id="a-foto-smaz"> <span>odebrat fotku</span></label>' : ''}<div class="err"></div></div></section>
+
+    <section class="card"><h2>Lidé a nabídka</h2>
+     <div class="ak-2">${pole('pocet', 'Kolik lidí je potřeba', a.pocet_lidi, 'number', ' min="1" max="500"')}${pole('odmena', 'Odměna (hosteska ji uvidí v nabídce)', a.odmena, 'text', ' placeholder="např. 180 Kč/h"')}</div>
+     ${pole('uzaverka', 'Uzávěrka přihlášek (nepovinné)', uzav, 'datetime-local')}
+     <h3>Požadavky na lidi <span class="mute">– předvyplní filtr při výběru lidí</span></h3>
+     <div class="ak-3">${pole('vyska_od', 'Výška od (cm)', poz.vyska_od, 'number', ' min="120" max="220"')}
+      <div class="fld" data-f="jazyk"><label for="a-jazyk">Jazyk</label><select id="a-jazyk"><option value="">–</option>${['angličtina', 'němčina', 'francouzština', 'polština', 'španělština'].map((j) => `<option${j === poz.jazyk ? ' selected' : ''}>${j}</option>`).join('')}</select><div class="err"></div></div>
+      <div class="fld"><label>&nbsp;</label><label class="chk"><input type="checkbox" id="a-ridicak"${poz.ridicak ? ' checked' : ''}> <span>řidičák</span></label> <label class="chk"><input type="checkbox" id="a-auto"${poz.auto ? ' checked' : ''}> <span>vlastní auto</span></label></div></div></section>
+
+    <section class="card"><h2>Poznámka</h2><div class="fld" data-f="poznamka"><textarea id="a-poznamka" rows="3" placeholder="cokoli dalšího k akci">${esc(a.poznamka || '')}</textarea><div class="err"></div></div></section>
+    <div class="akce ak-tlacitka"><button class="btn" type="submit">${nova ? 'Založit akci' : 'Uložit změny'}</button></div>
+   </form>
+   ${nova ? '' : `<section class="card ak-dalsi"><h2>Další kroky</h2><div class="akce">
+     <button class="btn o mini" id="ak-kop1">Kopírovat na další den</button><button class="btn o mini" id="ak-kopx">Kopírovat na jiné datum…</button>
+     ${zrusena ? '<button class="btn o mini" id="ak-obnov">Obnovit akci</button>' : '<button class="btn o mini" id="ak-zrus">Zrušit akci…</button>'}</div><div id="ak-krok"></div></section>`}`;
+  zapniMenu();
+  const f = document.getElementById('ak-f'), h = (id) => (document.getElementById('a-' + id)?.value || '').trim();
+  document.getElementById('ak-zpet').onclick = () => vAkce();
+  document.getElementById('a-adresa').oninput = (e) => (document.getElementById('a-mapa').innerHTML = mapa(e.target.value.trim()));
+  // výběr klienta: fakturační údaje a (když jsou kontakty prázdné) kontakty z jeho poslední akce
+  document.getElementById('a-klient').onchange = (e) => {
+    const k = S.klienti.find((x) => x.id === e.target.value) || {};
+    [['k_nazev', 'nazev'], ['k_ico', 'ico'], ['k_dic', 'dic'], ['k_email', 'fakturacni_email'], ['k_adresa', 'fakturacni_adresa']].forEach(([p, s]) => (document.getElementById('a-' + p).value = k[s] || ''));
+    const posledni = S.akce.filter((x) => k.id && x.klient_id === k.id).sort((x, y) => (x.datum < y.datum ? 1 : -1))[0];
+    const prazdne = KONTAKT_ROLE.every((_, i) => !h(`kk${i}_jmeno`) && !h(`kk${i}_telefon`) && !h(`kk${i}_email`));
+    if (posledni && prazdne) { const zb = [...posledni.kontakty_klient];
+      KONTAKT_ROLE.forEach(([role], i) => { const j = zb.findIndex((x) => x.role === role), x = j >= 0 ? zb.splice(j, 1)[0] : {}; ['jmeno', 'telefon', 'email'].forEach((p) => (document.getElementById(`a-kk${i}_${p}`).value = x[p] || '')); }); }
+  };
+  // fotka oblečení: náhled hned po výběru, nahraje se při uložení
+  let novaFotka = null;
+  const ukazFotku = (url) => (document.getElementById('a-foto-nahled').innerHTML = url ? `<img alt="Oblečení" src="${esc(url)}">` : '');
+  fotkaAkce(a.obleceni_foto).then(ukazFotku);
+  document.getElementById('a-foto').onchange = (e) => { novaFotka = e.target.files[0] || null; const fl = f.querySelector('[data-f=foto]');
+    fl.classList.remove('chyba'); fl.querySelector('.err').textContent = '';
+    if (novaFotka && novaFotka.size > 5 * 1024 * 1024) { fl.classList.add('chyba'); fl.querySelector('.err').textContent = 'Fotka je větší než 5 MB.'; novaFotka = null; e.target.value = ''; return; }
+    if (novaFotka) ukazFotku(URL.createObjectURL(novaFotka)); };
+
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    f.querySelectorAll('.fld.chyba').forEach((x) => { x.classList.remove('chyba'); x.querySelector('.err').textContent = ''; });
+    const ch = {};
+    if (!h('nazev')) ch.nazev = 'Vyplňte název akce.';
+    if (!h('datum')) ch.datum = 'Vyberte datum.'; else if (nova && h('datum') < dnesIso()) ch.datum = 'Datum je v minulosti.';
+    if (!h('okres')) ch.okres = 'Vyberte město.';
+    if (!h('adresa')) ch.adresa = 'Vyplňte adresu, ať lidé trefí.';
+    if (!h('sraz_cas')) ch.sraz_cas = 'Vyplňte čas srazu.';
+    if (h('prace_od') && h('prace_do') && h('prace_do') <= h('prace_od') && h('prace_do') > '06:00') ch.prace_do = 'Konec musí být po začátku.';
+    if (!(+h('pocet') >= 1 && +h('pocet') <= 500)) ch.pocet = 'Zadejte počet 1–500.';
+    if (h('vyska_od') && (+h('vyska_od') < 120 || +h('vyska_od') > 220)) ch.vyska_od = 'Výška 120–220 cm.';
+    if (h('uzaverka') && h('datum') && h('uzaverka').slice(0, 10) > h('datum')) ch.uzaverka = 'Uzávěrka musí být nejpozději v den akce.';
+    if (!h('k_nazev') && (h('k_ico') || h('k_dic') || h('k_email') || h('k_adresa'))) ch.k_nazev = 'Vyplňte název klienta.';
+    if (h('k_ico')) { const c = K.icoChyba(h('k_ico')); if (c) ch.k_ico = c; }
+    if (h('k_dic') && !/^[A-Z]{2}[0-9A-Z]{8,12}$/.test(h('k_dic').toUpperCase().replace(/\s/g, ''))) ch.k_dic = 'DIČ zadejte jako CZ12345678.';
+    if (h('k_email')) { const c = K.emailChyba(h('k_email')); if (c) ch.k_email = c; }
+    if (h('v_telefon')) { const c = K.telefonChyba(h('v_telefon')); if (c) ch.v_telefon = c; }
+    KONTAKT_ROLE.forEach((_, i) => { if (h(`kk${i}_telefon`)) { const c = K.telefonChyba(h(`kk${i}_telefon`)); if (c) ch[`kk${i}_telefon`] = c; }
+      if (h(`kk${i}_email`)) { const c = K.emailChyba(h(`kk${i}_email`)); if (c) ch[`kk${i}_email`] = c; } });
+    if (Object.keys(ch).length) {
+      Object.entries(ch).forEach(([k, t]) => { const x = f.querySelector(`[data-f=${k}]`); x.classList.add('chyba'); x.querySelector('.err').textContent = t; });
+      return f.querySelector('.fld.chyba').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    const tl = f.querySelector('button[type=submit]'); tl.disabled = true;
+    const konec = (t) => { tl.disabled = false; chybaFormu(f, t); };
+    // 1) klient: vybraný se upraví, nový se založí
+    let klientId = h('klient') || null;
+    if (h('k_nazev')) {
+      const k = { nazev: h('k_nazev'), ico: K.cisla(h('k_ico')) || null, dic: h('k_dic').toUpperCase().replace(/\s/g, '') || null, fakturacni_email: h('k_email') || null, fakturacni_adresa: h('k_adresa') || null };
+      const r = klientId ? await sb.from('klient').update(k).eq('id', klientId) : await sb.from('klient').insert(k).select('id').single();
+      if (r.error) return konec(/klient_ico_uq|duplicate/i.test(r.error.message) ? 'Klient s tímto IČO už existuje – vyberte ho v seznamu.' : chyba(r.error));
+      if (!klientId) klientId = r.data.id;
+    } else klientId = null;
+    // 2) akce
+    const zaznam = { nazev: h('nazev'), klient_id: klientId, okres_kod: h('okres'), adresa: h('adresa'), datum: h('datum'), sraz_cas: h('sraz_cas'), sraz_misto: h('sraz_misto') || null,
+      prace_od: h('prace_od') || null, prace_do: h('prace_do') || null,
+      kontakt_vixen: { jmeno: h('v_jmeno'), telefon: h('v_telefon') ? K.telefonNormalizuj(h('v_telefon')) : '' },
+      kontakty_klient: KONTAKT_ROLE.map(([role], i) => ({ role, jmeno: h(`kk${i}_jmeno`), telefon: h(`kk${i}_telefon`) ? K.telefonNormalizuj(h(`kk${i}_telefon`)) : '', email: h(`kk${i}_email`) }))
+        .filter((x) => x.jmeno || x.telefon || x.email),
+      obleceni: f.querySelector('input[name=obleceni]:checked').value, obleceni_popis: h('obleceni_popis') || null,
+      pocet_lidi: +h('pocet'), odmena: h('odmena') || null, uzaverka: h('uzaverka') ? new Date(h('uzaverka')).toISOString() : null,
+      pozadavky: Object.fromEntries(Object.entries({ vyska_od: h('vyska_od') ? +h('vyska_od') : null, jazyk: h('jazyk') || null, ridicak: document.getElementById('a-ridicak').checked || null, auto: document.getElementById('a-auto').checked || null }).filter(([, v]) => v)),
+      poznamka: h('poznamka') || null };
+    if (document.getElementById('a-foto-smaz')?.checked) zaznam.obleceni_foto = null;
+    const r = nova ? await sb.from('akce').insert(zaznam).select('id').single() : await sb.from('akce').update(zaznam).eq('id', a.id);
+    if (r.error) return konec(chyba(r.error));
+    const id = nova ? r.data.id : a.id;
+    // 3) fotka oblečení
+    if (novaFotka) {
+      const cesta = `${id}/obleceni-${Date.now()}.${(novaFotka.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`;
+      const up = await sb.storage.from('akce').upload(cesta, novaFotka, { contentType: novaFotka.type });
+      if (up.error) return konec('Akce je uložená, ale fotku se nepodařilo nahrát: ' + chyba(up.error));
+      S.fotoUrl[cesta] = URL.createObjectURL(novaFotka);
+      const u = await sb.from('akce').update({ obleceni_foto: cesta }).eq('id', id);
+      if (u.error) return konec(chyba(u.error));
+    }
+    await nactiAkce();
+    vAkceForm(S.akce.find((x) => x.id === id), msg(nova ? 'Akce založená ✓' : 'Změny uložené ✓'));
+  };
+  if (nova) return;
+  const krok = document.getElementById('ak-krok');
+  const kopiruj = async (datum) => {
+    const { id, klient, hledej, vytvoreno, zmeneno, vytvoril, stav, zruseni_duvod, ...zbytek } = a;
+    const posun = Math.round((new Date(datum + 'T12:00:00') - new Date(a.datum + 'T12:00:00')) / 86400000);
+    const r = await sb.from('akce').insert({ ...zbytek, datum, zkopirovano_z: a.id, uzaverka: a.uzaverka ? new Date(new Date(a.uzaverka).getTime() + posun * 86400000).toISOString() : null }).select('id').single();
+    if (r.error) return (krok.innerHTML = msg(esc(chyba(r.error)), 'bad'));
+    await nactiAkce();
+    vAkceForm(S.akce.find((x) => x.id === r.data.id), msg(`Kopie na ${esc(denAkce(datum))} vytvořena ✓ Zkontrolujte údaje.`));
+  };
+  document.getElementById('ak-kop1').onclick = () => kopiruj(posunDen(a.datum, 1));
+  document.getElementById('ak-kopx').onclick = () => {
+    krok.innerHTML = `<div class="ak-krok"><label for="ak-kop-datum">Datum kopie</label> <input type="date" id="ak-kop-datum" value="${posunDen(a.datum, 7)}"> <button class="btn mini" id="ak-kop-ok">Vytvořit kopii</button></div>`;
+    document.getElementById('ak-kop-ok').onclick = () => { const d = document.getElementById('ak-kop-datum').value; if (d) kopiruj(d); };
+  };
+  const zrus = document.getElementById('ak-zrus');
+  if (zrus) zrus.onclick = () => {
+    krok.innerHTML = `<div class="ak-krok"><label for="ak-duvod">Proč se akce ruší?</label><input id="ak-duvod" placeholder="např. klient akci zrušil">
+      <div class="akce"><button class="btn mini" id="ak-zrus-ok">Ano, zrušit akci</button><button class="btn o mini" id="ak-zrus-ne">Ne</button></div></div>`;
+    document.getElementById('ak-zrus-ne').onclick = () => (krok.innerHTML = '');
+    document.getElementById('ak-zrus-ok').onclick = async () => {
+      const d = document.getElementById('ak-duvod').value.trim();
+      if (!d) return document.getElementById('ak-duvod').focus();
+      const { error } = await sb.from('akce').update({ stav: 'zrusena', zruseni_duvod: d }).eq('id', a.id);
+      if (error) return krok.insertAdjacentHTML('beforeend', msg(esc(chyba(error)), 'bad'));
+      await nactiAkce(); vAkceForm(S.akce.find((x) => x.id === a.id), msg('Akce zrušená. Najdete ji v záložce Zrušené.'));
+    };
+  };
+  const obnov = document.getElementById('ak-obnov');
+  if (obnov) obnov.onclick = async () => {
+    const { error } = await sb.from('akce').update({ stav: 'priprava', zruseni_duvod: null }).eq('id', a.id);
+    if (error) return (krok.innerHTML = msg(esc(chyba(error)), 'bad'));
+    await nactiAkce(); vAkceForm(S.akce.find((x) => x.id === a.id), msg('Akce obnovená ✓'));
   };
 }
 

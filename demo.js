@@ -56,6 +56,29 @@ stavy.forEach((stav, i) => {
       odeslano_at: iso(ode), odeslano_na: db.nastup[id].email_smlouvy, odstoupeni_do: iso(new Date(+ode + 7 * DEN)), odstoupeno_at: null, pdf_cesta: null, dokument_sablona: sabl }]; }
   else if (r < 90) db.dok[id] = [{ id: 'dd-' + i, stav: 'k_podpisu', obsah, vytvoreno: iso(new Date(TED - 2 * DEN)), ...(r < 85 ? VIX(iso(new Date(TED - DEN))) : {}), podepsano_at: null, podpis: null, dokument_sablona: sabl }];
 });
+
+// vymyšlení klienti a akce (modul 2 – akce); IČO s platnou kontrolní číslicí, firmy neexistují
+const icoVyrob = (z) => { const a = [...z].reduce((s, d, i) => s + Number(d) * (8 - i), 0) % 11; return z + (a === 0 ? 1 : a === 1 ? 0 : 11 - a); };
+const denIso = (n) => { const d = new Date(TED + n * DEN); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+db.klient = [
+  { id: 'kl1', nazev: 'Kávovar Aroma s.r.o. (vymyšlený)', ico: icoVyrob('1234567'), dic: 'CZ' + icoVyrob('1234567'), fakturacni_adresa: 'Lipová 12, 370 01 České Budějovice', fakturacni_email: 'faktury@example.cz', poznamka: null },
+  { id: 'kl2', nazev: 'Pivovar Zlatý klas (vymyšlený)', ico: icoVyrob('2345678'), dic: null, fakturacni_adresa: 'Sladovnická 3, 397 01 Písek', fakturacni_email: 'ucetni@example.cz', poznamka: null },
+  { id: 'kl3', nazev: 'Veletrhy Morava a.s. (vymyšlený)', ico: icoVyrob('3456789'), dic: 'CZ' + icoVyrob('3456789'), fakturacni_adresa: 'Výstavní 1, 603 00 Brno', fakturacni_email: 'fakturace@example.cz', poznamka: null },
+];
+const KK = (j, t) => [{ role: 'primarni', jmeno: j, telefon: t, email: 'kontakt@example.cz' }, { role: 'na_akci', jmeno: 'Vedoucí směny (vymyšlený)', telefon: '+420601000222', email: '' }];
+db.akce = [
+  ['ak1', 'Ochutnávka kávy – obchodní centrum', 'kl1', 'ceske-budejovice', 'Lidická 1, České Budějovice (vymyšlená adresa)', 0, '08:30', '09:00', '17:00', 3, '170 Kč/h', 'klient', 'Zástěra a tričko dodá klient, vlastní černé kalhoty.'],
+  ['ak2', 'Degustace piva – slavnosti', 'kl2', 'pisek', 'Velké náměstí, Písek', 2, '13:00', '14:00', '22:00', 4, '180 Kč/h', 'vlastni', 'Černé tričko, džíny, pohodlné boty.'],
+  ['ak3', 'Degustace piva – slavnosti (2. den)', 'kl2', 'pisek', 'Velké náměstí, Písek', 3, '11:00', '12:00', '20:00', 4, '180 Kč/h', 'vlastni', 'Černé tričko, džíny, pohodlné boty.'],
+  ['ak4', 'Veletrh – registrace hostů', 'kl3', 'brno-mesto', 'Výstaviště, Brno (vymyšlená hala)', 9, '07:30', '08:00', '18:00', 8, '200 Kč/h', 'klient', 'Kostýmek dodá klient, vlastní černé lodičky.'],
+  ['ak5', 'Promo akce – ochutnávka', 'kl1', 'tabor', 'Náměstí, Tábor', 16, '09:30', '10:00', '16:00', 2, '170 Kč/h', 'klient', null],
+  ['ak6', 'Ochutnávka kávy – obchodní centrum', 'kl1', 'ceske-budejovice', 'Lidická 1, České Budějovice (vymyšlená adresa)', -7, '08:30', '09:00', '17:00', 3, '170 Kč/h', 'klient', null],
+  ['ak7', 'Firemní večírek – šatna', null, 'praha', 'Vymyšlená 10, Praha 1', -20, '17:30', '18:00', '23:30', 2, '190 Kč/h', 'vlastni', 'Černé šaty nebo kostýmek.'],
+  ['ak8', 'Veletrh – stánek', 'kl3', 'brno-mesto', 'Výstaviště, Brno (vymyšlená hala)', 5, '08:00', '08:30', '17:00', 2, '200 Kč/h', 'klient', null],
+].map(([id, nazev, klient_id, okres_kod, adresa, den, sraz, od, do_, pocet, odmena, obleceni, popis]) => ({ id, nazev, klient_id, okres_kod, adresa, datum: denIso(den), sraz_cas: sraz + ':00', sraz_misto: null,
+  prace_od: od + ':00', prace_do: do_ + ':00', kontakt_vixen: { jmeno: 'Laďka', telefon: '+420601000111' }, kontakty_klient: klient_id ? KK('Kontakt klienta (vymyšlený)', '+420601000333') : [],
+  obleceni, obleceni_popis: popis, obleceni_foto: null, pocet_lidi: pocet, odmena, pozadavky: id === 'ak4' ? { vyska_od: 168, jazyk: 'angličtina' } : {}, uzaverka: den > 1 ? new Date(TED + (den - 1) * DEN).toISOString() : null,
+  poznamka: null, stav: id === 'ak8' ? 'zrusena' : 'priprava', zruseni_duvod: id === 'ak8' ? 'Klient stánek zrušil.' : null, zkopirovano_z: id === 'ak3' ? 'ak2' : null, vytvoreno: new Date(TED - 10 * DEN).toISOString(), zmeneno: new Date(TED - 10 * DEN).toISOString() }));
 db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro TBDB', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
 
 // ilustrační „fotky“ (vymyšlené postavy, žádné skutečné osoby) – SVG podle cesty
@@ -147,6 +170,18 @@ window.fetch = async (vstup, init = {}) => {
   }
   if (p.endsWith('/rest/v1/tiket_zprava')) { if (m === 'POST') { db.zprava.push({ ...body, id: 'z' + db.zprava.length, vytvoreno: new Date().toISOString() }); return odpoved(undefined, 201); } return odpoved(db.zprava.filter((z) => z.tiket_id === hodnota(q, 'tiket_id'))); }
   if (p.endsWith('/rest/v1/tiket_priloha')) return odpoved(m === 'POST' ? undefined : [], m === 'POST' ? 201 : 200);
+  if (p.endsWith('/rest/v1/klient')) {
+    if (m === 'POST') { if (body.ico && db.klient.some((x) => x.ico === body.ico)) return odpoved({ message: 'duplicate key value violates unique constraint "klient_ico_uq"' }, 409);
+      const x = { id: 'kl' + Date.now(), ...body }; db.klient.push(x); return odpoved(x, 201); }
+    if (m === 'PATCH') { Object.assign(db.klient.find((x) => x.id === hodnota(q, 'id')) || {}, body); return odpoved(undefined, 204); }
+    return odpoved([...db.klient].sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs')));
+  }
+  if (p.endsWith('/rest/v1/akce')) {
+    const ted = new Date().toISOString();
+    if (m === 'POST') { const x = { id: 'ak' + Date.now(), stav: 'priprava', zruseni_duvod: null, obleceni_foto: null, zkopirovano_z: null, ...body, vytvoreno: ted, zmeneno: ted }; db.akce.push(x); return odpoved(x, 201); }
+    if (m === 'PATCH') { const x = db.akce.find((a) => a.id === hodnota(q, 'id')); if (x) Object.assign(x, body, { zmeneno: ted }); return odpoved(undefined, 204); }
+    return odpoved([...db.akce].sort((a, b) => (a.datum + a.sraz_cas < b.datum + b.sraz_cas ? -1 : 1)).map((a) => ({ ...a, klient: db.klient.find((k) => k.id === a.klient_id) || null })));
+  }
   if (p.includes('/storage/v1/')) return odpoved({ Key: 'ukazka', signedURL: '#' });
   return odpoved({ message: 'V ukázce není k dispozici.' }, 404);
 };

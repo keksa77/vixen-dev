@@ -566,11 +566,7 @@ function vProfil() {
 }
 
 // ---------- před první akcí: forma spolupráce (rozcestník, Vixen 26. 10. 2026) ----------
-const icoChyba = (v) => {
-  const c = K.cisla(v); if (!c) return 'Vyplňte IČO.'; if (c.length !== 8) return 'IČO má 8 číslic.';
-  const a = [...c.slice(0, 7)].reduce((s, d, i) => s + Number(d) * (8 - i), 0) % 11;
-  return Number(c[7]) === (a === 0 ? 1 : a === 1 ? 0 : 11 - a) ? '' : 'IČO nesedí – zkontrolujte číslice.';
-};
+const icoChyba = K.icoChyba;
 function vForma(zmena = false) {
   S.view = 'forma';
   if (!schvalena() || !vyzvan()) return ($app.innerHTML = '<h1>Smlouva</h1>' + msg('Smlouvu budeme chtít až před vaší první akcí – kancelář vám dá vědět.', 'warn'));

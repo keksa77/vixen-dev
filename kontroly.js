@@ -127,5 +127,11 @@ const CHYBY_EN = [
   ['networkerror', 'Nepodařilo se spojit se serverem. Zkontrolujte připojení k internetu.'],
 ];
 const prelozChybu = (m) => { const t = String(m || '').toLowerCase(); const x = CHYBY_EN.find(([k]) => t.includes(k)); return x ? x[1] : m; };
-window.K = { prelozChybu, jazykyHtml, jazykyZapni, jazykyHodnota, vokativ, cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
+// IČO: 8 číslic, kontrolní číslice váženým součtem mod 11
+const icoChyba = (v) => {
+  const c = cisla(v); if (!c) return 'Vyplňte IČO.'; if (c.length !== 8) return 'IČO má 8 číslic.';
+  const a = [...c.slice(0, 7)].reduce((s, d, i) => s + Number(d) * (8 - i), 0) % 11;
+  return Number(c[7]) === (a === 0 ? 1 : a === 1 ? 0 : 11 - a) ? '' : 'IČO nesedí – zkontrolujte číslice.';
+};
+window.K = { icoChyba, prelozChybu, jazykyHtml, jazykyZapni, jazykyHodnota, vokativ, cisla, rcDatum, rcChyba, ucetChyba, pscChyba, telefonNormalizuj, telefonChyba, emailChyba, povinne, datumCz, datumIso };
 })();
