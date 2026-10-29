@@ -682,8 +682,7 @@ function hromadne() {
   el.innerHTML = `<b>Vybráno ${ids.length}</b>
     ${S.proAkci ? '<button class="btn mini" data-h="nabidka">Poslat nabídku na akci</button>' : ''}
     <button class="btn o mini" data-h="email">Kopírovat e-maily</button><button class="btn o mini" data-h="tel">Kopírovat telefony</button>
-    <button class="btn o mini" data-h="pripom">Poslat připomínku e-mailem</button>
-    <button class="btn o mini" data-h="wa">Připravit WhatsApp upozornění</button>
+    <button class="btn o mini" data-h="zprava">Poslat zprávu…</button>
     <button class="btn o mini" data-h="vyzva">Požádat o údaje a smlouvu</button>
     <button class="btn o mini" data-h="csv">Export do Excelu (CSV)</button>
     <select id="hstav"><option value="">Změnit stav…</option>${Object.entries(STAV_O).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
@@ -692,17 +691,9 @@ function hromadne() {
   const kopiruj = async (t, co) => { try { await navigator.clipboard.writeText(t); info(`Zkopírováno: ${co}`); } catch { info('Kopírování prohlížeč nepovolil.'); } };
   el.querySelector('[data-h=email]').onclick = () => kopiruj(oslovit.map((o) => o.email).join(', '), `${oslovit.length} e-mailů${bezText}`);
   el.querySelector('[data-h=tel]').onclick = () => kopiruj(oslovit.map((o) => o.telefon).join('\n'), `${oslovit.length} telefonů${bezText}`);
-  el.querySelector('[data-h=pripom]').onclick = () => {
-    el.querySelector('.potvrd-h')?.remove();
-    el.insertAdjacentHTML('beforeend', `<div class="potvrd-h">${msg(`Poslat připomínku ${oslovit.length} lidem${bezText}? Každý dostane e-mail podle toho, co mu chybí (přihlášení, profil, údaje, podpis smlouvy). Komu nic nechybí nebo připomínka odešla v posledních 3 dnech, toho aplikace vynechá.`, 'warn')}<button class="btn mini" data-ok>Ano, poslat</button> <button class="btn o mini" data-ne>Ne</button></div>`);
-    el.querySelector('[data-ne]').onclick = () => el.querySelector('.potvrd-h').remove();
-    el.querySelector('[data-ok]').onclick = async (e) => { e.target.disabled = true; info('Posílám…');
-      const r = oslovit.length ? await posliZpravu(oslovit, 'pripominka') : { text: 'Není komu poslat.' };
-      el.querySelector('.potvrd-h').remove(); info(r.text.replace(/<[^>]+>/g, '')); };
-  };
+  el.querySelector('[data-h=zprava]').onclick = () => { el.querySelector('.potvrd-h')?.remove(); zpravaPanel(el, osoby); };
   el.querySelector('[data-h=csv]').onclick = () => { exportCsv(osoby); info('Soubor stažen.'); };
   if (S.proAkci) el.querySelector('[data-h=nabidka]').onclick = () => poslatNabidku(el, osoby, info);
-  el.querySelector('[data-h=wa]').onclick = () => whatsappPanel(el, osoby);
   el.querySelector('[data-h=vyzva]').onclick = () => {
     el.querySelector('.potvrd-h')?.remove();
     const tym = osoby.filter((o) => ['prijata', 'aktivni'].includes(o.stav) && !o.smlouva_vyzva_at);
@@ -750,35 +741,105 @@ function vyzvaHtml(o) {
     ${tym ? `<button class="btn o mini" id="vyzva-btn">${o.smlouva_vyzva_at ? 'Zrušit výzvu ke smlouvě' : 'Požádat o údaje a smlouvu (před první akcí)'}</button><div id="vyzva-msg"></div>` : ''}`;
 }
 
-// ---------- WhatsApp upozornění: aplikace připraví text pro každého, kancelář odešle ručně ze svého WhatsAppu ----------
-const WA_TEXT = 'Dobrý den, {oslovení}, máme pro vás novou nabídku od Vixen. Podrobnosti najdete v aplikaci: {odkaz}\nOdpovídejte prosím v aplikaci. Děkujeme, Vixen';
-function whatsappPanel(el, osoby, opt = {}) {
-  el.querySelector('.potvrd-h')?.remove();
-  const s = osoby.filter((o) => o.whatsapp_souhlas_at && !o.neoslovovat), bez = osoby.filter((o) => !o.whatsapp_souhlas_at).length, neosl = osoby.filter((o) => o.whatsapp_souhlas_at && o.neoslovovat).length;
-  const odkaz = opt.odkaz || (() => new URL('./', location.href).href);
-  el.insertAdjacentHTML('beforeend', `<div class="potvrd-h wa-panel"><b>WhatsApp upozornění</b> – ${s.length} lidí se souhlasem${bez ? ` · vynecháno ${bez} bez souhlasu` : ''}${neosl ? ` · ${neosl} neoslovovat` : ''}
-    <p class="pozn">Text se doplní pro každého. {oslovení} = jméno v 5. pádě, {odkaz} = odkaz do aplikace. Zprávy odesílejte z firemního WhatsAppu (WhatsApp Business) – po kliknutí se otevře chat s vloženým textem, stačí Enter. Hromadné automatické rozesílání WhatsApp nedovoluje.</p>
-    <textarea id="wa-text" rows="3">${esc(opt.text || WA_TEXT)}</textarea>
-    <div class="akce"><button class="btn mini" data-wa-pripravit>Připravit zprávy</button> <button class="btn o mini" data-wa-zavrit>Zavřít</button></div><div id="wa-seznam"></div></div>`);
-  const panel = el.querySelector('.wa-panel');
-  panel.querySelector('[data-wa-zavrit]').onclick = () => panel.remove();
-  panel.querySelector('[data-wa-pripravit]').onclick = () => {
-    const vzor = panel.querySelector('#wa-text').value;
-    const text = (o) => vzor.split('{oslovení}').join(K.vokativ(o.jmeno)).split('{odkaz}').join(odkaz(o));
-    const box = panel.querySelector('#wa-seznam');
-    box.innerHTML = s.length ? `<table class="wa-tab">${s.map((o) => `<tr data-id="${o.id}"><td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b><br><span class="mute">${esc(o.telefon)}</span></td>
-      <td class="wa-txt">${esc(text(o))}</td><td class="wa-tl"><a class="btn mini" target="_blank" rel="noopener" href="https://wa.me/${o.telefon.replace(/\D/g, '')}?text=${encodeURIComponent(text(o))}">Otevřít ve WhatsAppu</a>
-      <button class="btn o mini" data-kop>Kopírovat text</button><span class="wa-stav mute"></span></td></tr>`).join('')}</table>` : '<p class="mute">Nikdo z vybraných nedal souhlas se zprávami přes WhatsApp.</p>';
-    box.querySelectorAll('tr').forEach((tr) => {
-      const o = s.find((x) => x.id === tr.dataset.id), t = text(o), stav = tr.querySelector('.wa-stav');
-      const zapis = async () => { const { error } = opt.zapis ? await opt.zapis(o, t) : await sb.rpc('kancelar_whatsapp_zapis', { p_osoba: o.id, p_text: t });
-        stav.textContent = error ? 'nepodařilo se zapsat: ' + chyba(error) : 'odesláno ' + new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) + ' ✓';
-        if (!error) tr.classList.add('wa-hotovo'); };
-      tr.querySelector('a').addEventListener('click', zapis);
-      tr.querySelector('[data-kop]').onclick = async () => { try { await navigator.clipboard.writeText(t); zapis(); } catch { stav.textContent = 'Kopírování prohlížeč nepovolil.'; } };
-    });
+// ---------- ZPRÁVA HOSTESCE: kancelář vždy vybere kanály (aplikace, e-mail, WhatsApp), každý má vlastní text ----------
+// Aplikace = zpráva od kanceláře na Přehledu hostesky; e-mail přes funkci hosteska-zprava; WhatsApp odesílá kancelář ručně.
+// Zástupné značky v textu: {oslovení}, {odkaz}, {email}, u připomínky {co chybí}, u nabídky {akce}.
+const KANALY = { aplikace: 'Aplikace', email: 'E-mail', whatsapp: 'WhatsApp' };
+const CO_CHYBI = {
+  prihlaseni: 'přihlásit se do aplikace (e-mailem {email}, heslo nepotřebujete)',
+  profil: 'doplnit profil (výška, konfekce, jazyky, kdy můžete pracovat)',
+  udaje: 'doplnit údaje pro smlouvu (adresa, rodné číslo, pojišťovna, číslo účtu)',
+  podpis: 'podepsat smlouvu kódem z e-mailu – Vixen ji už podepsal',
+};
+// co člověku chybí (stejné pořadí jako připomínka na serveru)
+const chybiKrok = (o) => !o.auth_user_id ? 'prihlaseni' : !o.ma_profil ? 'profil' : o.smlouva_vyzva_at && !o.udaje ? 'udaje' : o.dpp === 'ceka_hosteska' ? 'podpis' : '';
+const ZP_DRUH = {
+  pripominka: { t: 'Připomínka – co chybí', typ: (o) => 'pripominka_' + chybiKrok(o), vynech: (o) => (!chybiKrok(o) ? 'nic nechybí' : ''),
+    aplikace: ['Připomínka od kanceláře', 'Dobrý den, {oslovení},\nprosíme vás ještě {co chybí}.\nDěkujeme, kancelář Vixen'],
+    email: ['Vixen – připomínka', 'Dobrý den, {oslovení},\n\nprosíme vás ještě {co chybí}.\n\nAplikace Vixen: {odkaz}\n\nDěkujeme,\nkancelář Vixen hostesky'],
+    whatsapp: [null, 'Dobrý den, {oslovení}, připomínáme: prosíme vás ještě {co chybí}. Aplikace Vixen: {odkaz}\nDěkujeme, Vixen'] },
+  nabidka: { t: 'Nabídka akce', typ: () => 'nabidka', vynech: () => '',
+    aplikace: ['Čeká na vás nabídka: {akce}', 'Dobrý den, {oslovení},\nmáme pro vás akci {akce}. Podívejte se do Nabídek a odpovězte „Mám zájem“ nebo „Nemůžu“.\nDěkujeme, kancelář Vixen'],
+    email: ['Vixen – nabídka akce: {akce}', 'Dobrý den, {oslovení},\n\nmáme pro vás akci {akce}.\nPodrobnosti a přihlášení najdete v aplikaci: {odkaz}\n\nDěkujeme,\nkancelář Vixen hostesky'],
+    whatsapp: [null, 'Dobrý den, {oslovení}, máme pro vás novou akci: {akce}. Podrobnosti a přihlášení najdete v aplikaci: {odkaz}\nOdpovídejte prosím v aplikaci. Děkujeme, Vixen'] },
+  vlastni: { t: 'Vlastní zpráva', typ: () => 'vlastni', vynech: () => '',
+    aplikace: ['Zpráva od kanceláře', 'Dobrý den, {oslovení},\n\nDěkujeme, kancelář Vixen'],
+    email: ['Vixen – zpráva od kanceláře', 'Dobrý den, {oslovení},\n\n\n\nDěkujeme,\nkancelář Vixen hostesky'],
+    whatsapp: [null, 'Dobrý den, {oslovení}, \nDěkujeme, Vixen'] },
+};
+// zpravaPanel(el, osoby, { druhy: ['pripominka','vlastni'], akce, nabidky: {osoba_id: nabídka}, hotovo })
+function zpravaPanel(el, osoby, opt = {}) {
+  el.querySelector('.zp-panel')?.remove();
+  const druhy = opt.druhy || ['pripominka', 'vlastni'], akce = opt.akce;
+  const st = { druh: druhy[0], kanaly: new Set(['aplikace']), texty: {} };
+  const base = new URL('./', location.href).href;
+  const odkaz = (o) => (akce && opt.nabidky?.[o.id] ? base + '#n=' + opt.nabidky[o.id].token : base);
+  const akceText = akce ? `${akce.nazev} (${denAkce(akce.datum)}, ${S.cis.okres[akce.okres_kod]?.mesto || ''})` : '';
+  const vypln = (t, o) => t.split('{oslovení}').join(K.vokativ(o.jmeno)).split('{odkaz}').join(odkaz(o)).split('{akce}').join(akceText)
+    .split('{co chybí}').join((CO_CHYBI[chybiKrok(o)] || '')).split('{email}').join(o.email);
+  const prijemci = (k) => osoby.filter((o) => !o.neoslovovat && ['prijata', 'aktivni'].includes(o.stav) && !ZP_DRUH[st.druh].vynech(o) && (k !== 'whatsapp' || (o.whatsapp_souhlas_at && !(st.druh === 'nabidka' && opt.nabidky?.[o.id]?.otevreno))));
+  el.insertAdjacentHTML('beforeend', `<div class="potvrd-h zp-panel"><div class="zp-hl"><b>Poslat zprávu – vybráno ${osoby.length}</b><button type="button" class="btn o mini" data-zp-zavrit>Zavřít</button></div>
+    ${druhy.length > 1 ? `<div class="zp-druh">${druhy.map((d) => `<label><input type="radio" name="zp-druh" value="${d}"${d === st.druh ? ' checked' : ''}> ${ZP_DRUH[d].t}</label>`).join('')}</div>` : ''}
+    <div class="zp-kanaly"><span>Kanály:</span>${Object.entries(KANALY).map(([k, t]) => `<label><input type="checkbox" data-kanal="${k}"${st.kanaly.has(k) ? ' checked' : ''}> ${t} <small data-pocet="${k}"></small></label>`).join('')}</div>
+    <div class="zp-texty"></div><div class="zp-vynech pozn"></div>
+    <div class="akce"><button type="button" class="btn mini" data-zp-odeslat>Odeslat vybranými kanály</button></div><div class="zp-vysledek"></div><div class="zp-wa"></div></div>`);
+  const p = el.querySelector('.zp-panel');
+  const vzor = (k, i) => st.texty[st.druh + k + i] ?? ZP_DRUH[st.druh][k][i];
+  const nahled = (k, o) => `<small>Náhled pro ${esc(o.jmeno)} ${esc(o.prijmeni)}:</small>${ZP_DRUH[st.druh][k][0] !== null ? `<b>${esc(vypln(vzor(k, 0), o))}</b>
+` : ''}${esc(vypln(vzor(k, 1), o))}`;
+  const kresli = () => {
+    Object.keys(KANALY).forEach((k) => (p.querySelector(`[data-pocet=${k}]`).textContent = `(${prijemci(k).length})`));
+    const prvni = prijemci([...st.kanaly][0] || 'aplikace')[0];
+    p.querySelector('.zp-texty').innerHTML = [...st.kanaly].map((k) => `<fieldset class="zp-kanal"><legend>${KANALY[k]}</legend>
+      ${ZP_DRUH[st.druh][k][0] !== null ? `<label>${k === 'email' ? 'Předmět' : 'Nadpis'}<input data-t="${k}" data-i="0" value="${esc(vzor(k, 0))}"></label>` : ''}
+      <label>Text<textarea data-t="${k}" data-i="1" rows="${k === 'whatsapp' ? 3 : 5}">${esc(vzor(k, 1))}</textarea></label>
+      ${prvni ? `<div class="zp-nahled">${nahled(k, prvni)}</div>` : ''}</fieldset>`).join('')
+      || '<p class="mute">Vyberte aspoň jeden kanál.</p>';
+    p.querySelectorAll('[data-t]').forEach((x) => (x.oninput = () => { st.texty[st.druh + x.dataset.t + x.dataset.i] = x.value;
+      const n = x.closest('fieldset').querySelector('.zp-nahled'); if (n && prvni) n.innerHTML = nahled(x.dataset.t, prvni); }));
+    const vyn = osoby.length - prijemci('aplikace').length;
+    p.querySelector('.zp-vynech').textContent = (vyn ? `Vynechá se ${vyn} (neoslovovat, nepřijatí${st.druh === 'pripominka' ? ', komu nic nechybí' : ''}). ` : '')
+      + (st.kanaly.has('whatsapp') ? 'WhatsApp jen lidem se souhlasem – zprávy odešlete ručně ze seznamu níže. ' : '') + (st.kanaly.has('email') ? 'E-mail ve vývoji neodchází (jen zkušební adresy TBDB).' : '');
   };
+  p.querySelector('[data-zp-zavrit]').onclick = () => p.remove();
+  p.querySelectorAll('input[name=zp-druh]').forEach((r) => (r.onchange = () => { st.druh = r.value; kresli(); }));
+  p.querySelectorAll('[data-kanal]').forEach((c) => (c.onchange = () => { c.checked ? st.kanaly.add(c.dataset.kanal) : st.kanaly.delete(c.dataset.kanal); kresli(); }));
+  p.querySelector('[data-zp-odeslat]').onclick = async (e) => {
+    const vys = p.querySelector('.zp-vysledek');
+    if (!st.kanaly.size) return (vys.innerHTML = msg('Vyberte aspoň jeden kanál.', 'warn'));
+    e.target.disabled = true; vys.innerHTML = msg('Posílám…', 'warn');
+    const D = ZP_DRUH[st.druh], radky = [];
+    if (st.kanaly.has('aplikace')) {
+      const l = prijemci('aplikace');
+      const { data, error } = l.length ? await sb.rpc('kancelar_zprava_aplikace', { p_zpravy: l.map((o) => ({ osoba_id: o.id, typ: D.typ(o), predmet: vypln(vzor('aplikace', 0), o), text: vypln(vzor('aplikace', 1), o), akce_id: akce?.id || null })) }) : { data: { odeslano: 0 } };
+      radky.push(error ? `Aplikace: ${esc(chyba(error))}` : `Aplikace: zpráva doručena ${data.odeslano} lidem ✓`);
+    }
+    if (st.kanaly.has('email')) {
+      const l = prijemci('email');
+      const { data, error } = l.length ? await sb.functions.invoke('hosteska-zprava', { body: { osoba_ids: l.map((o) => o.id), typ: 'vlastni',
+        zpravy: Object.fromEntries(l.map((o) => [o.id, { predmet: vypln(vzor('email', 0), o), text: vypln(vzor('email', 1), o), typ: D.typ(o), akce_id: akce?.id || null }])) } }) : { data: { odeslano: 0 } };
+      radky.push(error || data?.chyba ? `E-mail: ${esc(data?.chyba || chyba(error))}` : `E-mail: odesláno ${data.odeslano || 0}${data.vyvoj ? `, VÝVOJ – neodesláno ${data.vyvoj}` : ''}${data.vynechano ? `, vynecháno ${data.vynechano}` : ''}${data.chyby ? `, chyby ${data.chyby}` : ''}`);
+    }
+    if (st.kanaly.has('whatsapp')) {
+      const l = prijemci('whatsapp');
+      radky.push(`WhatsApp: připraveno ${l.length} zpráv – odešlete je níže`);
+      p.querySelector('.zp-wa').innerHTML = l.length ? `<table class="wa-tab">${l.map((o) => { const t = vypln(vzor('whatsapp', 1), o);
+        return `<tr data-id="${o.id}"><td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b><br><span class="mute">${esc(o.telefon)}</span></td><td class="wa-txt">${esc(t)}</td>
+        <td class="wa-tl"><a class="btn mini" target="_blank" rel="noopener" href="https://wa.me/${o.telefon.replace(/\D/g, '')}?text=${encodeURIComponent(t)}">Otevřít ve WhatsAppu</a><button class="btn o mini" data-kop>Kopírovat text</button><span class="wa-stav mute"></span></td></tr>`; }).join('')}</table>` : '';
+      p.querySelectorAll('.zp-wa tr').forEach((tr) => {
+        const o = l.find((x) => x.id === tr.dataset.id), t = vypln(vzor('whatsapp', 1), o), stav = tr.querySelector('.wa-stav');
+        const zapis = async () => { const { error } = await sb.rpc('kancelar_whatsapp_zapis2', { p_osoba: o.id, p_typ: D.typ(o), p_text: t, p_akce: akce?.id || null });
+          stav.textContent = error ? 'nepodařilo se zapsat: ' + chyba(error) : 'odesláno ' + new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) + ' ✓'; if (!error) tr.classList.add('wa-hotovo'); };
+        tr.querySelector('a').addEventListener('click', zapis);
+        tr.querySelector('[data-kop]').onclick = async () => { try { await navigator.clipboard.writeText(t); zapis(); } catch { stav.textContent = 'Kopírování prohlížeč nepovolil.'; } };
+      });
+    }
+    vys.innerHTML = msg(radky.join('<br>'), radky.some((r) => /chyb|nepoda/.test(r)) ? 'warn' : 'ok'); e.target.disabled = false;
+    opt.hotovo?.();
+  };
+  kresli();
 }
+
 
 // ---------- AKCE (modul 2, etapa A): seznam, založení, úprava, kopie, zrušení ----------
 // Akce = jeden den, jeden sraz; vícedenní akce se zakládá kopií. Klient s fakturačními údaji se vybírá znovu.
@@ -1089,7 +1150,6 @@ function obsazeni(a) {
 }
 const obsazeniZn = (a) => { const o = obsazeni(a); if (!o.celkem) return '<span class="mute">nenabídnuto</span>';
   return `<b class="${o.potvrzeno >= a.pocet_lidi ? 'ok' : 'no'}">${o.potvrzeno}/${a.pocet_lidi}</b><small>zájem ${o.zajem} · bez odp. ${o.ceka}</small>`; };
-const WA_NABIDKA = (a) => `Dobrý den, {oslovení}, máme pro vás novou akci: ${a.nazev}, ${denAkce(a.datum)}, ${S.cis.okres[a.okres_kod]?.mesto || ''}. Podrobnosti a přihlášení najdete v aplikaci: {odkaz}\nOdpovídejte prosím v aplikaci. Děkujeme, Vixen`;
 
 async function obsazeniSekce(a, probehla, hlaska = '') {
   const box = document.getElementById('ak-obs'); if (!box) return;
@@ -1097,15 +1157,16 @@ async function obsazeniSekce(a, probehla, hlaska = '') {
   const o = obsazeni(a), PORADI = ['zajem', 'potvrzeno', 'ceka', 'nemuze', 'odmitnuto'];
   const l = nabidkyAkce(a).map((n) => ({ n, o: S.lide.find((x) => x.id === n.osoba_id) })).filter((x) => x.o)
     .sort((x, y) => PORADI.indexOf(nabStav(x.n)) - PORADI.indexOf(nabStav(y.n)) || x.o.prijmeni.localeCompare(y.o.prijmeni, 'cs'));
-  const proWa = l.filter(({ n, o: x }) => nabStav(n) === 'ceka' && !n.otevreno && x.whatsapp_souhlas_at && !x.neoslovovat);
+  const bezOdpovedi = l.filter(({ n }) => nabStav(n) === 'ceka'), potvrzeni = l.filter(({ n }) => nabStav(n) === 'potvrzeno');
   const otevr = (n) => n.otevreno ? 'v aplikaci ' + kdy(n.otevreno) : n.odkaz_otevren ? 'odkaz ' + kdy(n.odkaz_otevren) + ', zatím nepřihlášen/a' : '<span class="no">neotevřel/a</span>';
   box.innerHTML = `<section class="card ak-obs"><h2>Nabídka a obsazení</h2>${hlaska}
     <div class="ak-souhrn"><span class="ak-cislo ${o.potvrzeno >= a.pocet_lidi ? 'ok' : ''}"><b>${o.potvrzeno}/${a.pocet_lidi}</b> potvrzeno</span>
      <span>má zájem <b>${o.zajem}</b></span><span>bez odpovědi <b>${o.ceka}</b> (neotevřelo ${o.neotevreno})</span><span>nemůže <b>${o.nemuze}</b></span><span>nabídnuto <b>${o.celkem}</b></span></div>
     ${o.potvrzeno > a.pocet_lidi ? msg(`Potvrzeno je víc lidí (${o.potvrzeno}), než je potřeba (${a.pocet_lidi}).`, 'warn') : ''}
     <div class="akce"><button class="btn mini" id="ak-vybrat"${probehla ? ' disabled title="Akce už proběhla"' : ''}>Vybrat lidi a poslat nabídku</button>
-     <button class="btn o mini" id="ak-wa"${proWa.length ? '' : ' disabled'}>WhatsApp – kdo nabídku neotevřel (${proWa.length})</button></div>
-    <div id="ak-wa-box"></div>
+     <button class="btn o mini" id="ak-pripom"${bezOdpovedi.length && !probehla ? '' : ' disabled'}>Připomenout nabídku – bez odpovědi (${bezOdpovedi.length})</button>
+     <button class="btn o mini" id="ak-zprava"${potvrzeni.length ? '' : ' disabled'}>Zpráva potvrzeným (${potvrzeni.length})</button></div>
+    <div id="ak-zp-box"></div>
     ${l.length ? `<p class="pozn">Potvrzením člověku zároveň odemknete údaje a smlouvu v aplikaci (pokud je ještě nemá). Kontakty a podrobnosti uvidí až po potvrzení.</p>
     <div class="tab-obal"><table class="lide-tab ak-nab"><thead><tr><th>Foto</th><th>Jméno</th><th>Stav</th><th>Nabídku viděl/a</th><th>Smlouva</th><th></th></tr></thead><tbody>${l.map(({ n, o: x }) => { const s = nabStav(n);
       return `<tr data-n="${n.id}"><td>${nahled(x)}</td><td><b>${esc(x.prijmeni)} ${esc(x.jmeno)}</b><small><a class="tel" href="tel:${esc(x.telefon)}">${esc(x.telefon)}</a></small></td>
@@ -1116,9 +1177,9 @@ async function obsazeniSekce(a, probehla, hlaska = '') {
     : '<p class="mute">Nabídku zatím nikdo nedostal. Klikněte na „Vybrat lidi a poslat nabídku“ – filtr v Lidé se předvyplní podle města a požadavků akce.</p>'}</section>`;
   podepisFotky(l.map(({ o: x }) => x.fotky[0]).filter(Boolean)).then(() => box.querySelectorAll('.foto[data-cesta] img').forEach((i) => (i.src = S.fotoUrl[i.parentElement.dataset.cesta] || '')));
   document.getElementById('ak-vybrat').onclick = () => lideProAkci(a);
-  document.getElementById('ak-wa').onclick = () => whatsappPanel(document.getElementById('ak-wa-box'), proWa.map(({ n, o: x }) => ({ ...x, _nab: n })), {
-    text: WA_NABIDKA(a), odkaz: (x) => new URL('./', location.href).href + '#n=' + x._nab.token,
-    zapis: (x, t) => sb.rpc('kancelar_nabidka_whatsapp', { p_nabidka: x._nab.id, p_text: t }) });
+  const zpNab = Object.fromEntries(l.map(({ n }) => [n.osoba_id, n])), obnov = async () => { await nactiAkce(); };
+  document.getElementById('ak-pripom').onclick = () => zpravaPanel(document.getElementById('ak-zp-box'), bezOdpovedi.map(({ o: x }) => x), { druhy: ['nabidka', 'vlastni'], akce: a, nabidky: zpNab, hotovo: obnov });
+  document.getElementById('ak-zprava').onclick = () => zpravaPanel(document.getElementById('ak-zp-box'), potvrzeni.map(({ o: x }) => x), { druhy: ['vlastni'], akce: a, nabidky: zpNab, hotovo: obnov });
   box.querySelectorAll('button[data-r]').forEach((b) => (b.onclick = async () => {
     b.disabled = true;
     const { error } = await sb.rpc('kancelar_nabidka_rozhodni', { p_nabidky: [b.closest('tr').dataset.n], p_rozhodnuti: b.dataset.r || null });
@@ -1204,8 +1265,7 @@ async function vDetailOsoby(id) {
     <div class="fld"><label>Interní poznámka (uchazeč ji neuvidí)</label><textarea id="det-pozn" rows="3">${esc(o.pozn)}</textarea></div>
     <button class="btn" type="submit">Uložit</button></form></section>
    <section><h3>Zprávy hostesce</h3>
-    ${o.neoslovovat ? '<p class="mute">Neoslovovat – zprávy se neposílají.</p>' : `<div class="akce"><button class="btn o mini" id="z-pripom">Poslat připomínku e-mailem</button>${o.stav === 'prijata' || o.stav === 'aktivni' ? '<button class="btn o mini" id="z-schv">Poslat e-mail o schválení</button>' : ''}</div>
-    <p class="pozn">Připomínka sama vybere, co chybí: přihlášení do aplikace, profil, údaje pro smlouvu, nebo podpis smlouvy. Stejnému člověku odejde nejvýš jednou za 3 dny. <a href="#" id="z-nahled">Zobrazit, co by odešlo</a></p><div id="z-nahled-box"></div>`}
+    ${o.neoslovovat ? '<p class="mute">Neoslovovat – zprávy se neposílají.</p>' : '<div class="akce"><button class="btn o mini" id="z-zprava">Poslat zprávu…</button></div><p class="pozn">Vyberete kanály (aplikace, e-mail, WhatsApp) a pro každý se připraví text – připomínka sama doplní, co člověku chybí.</p><div id="z-panel"></div>'}
     <div id="z-msg"></div><div id="det-zpravy" class="mute">Načítám…</div></section>
    ${S.vedeni || S.tbdb ? '<section><h3>Historie změn</h3><div id="det-hist" class="mute">Načítám…</div></section>' : ''}`;
   d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
@@ -1233,23 +1293,18 @@ async function vDetailOsoby(id) {
     vykresliTabulku(); vDetailOsoby(id);
     d.querySelector('#det-f').insertAdjacentHTML('afterbegin', msg('Uloženo ✓'));
   };
-  const zpravaBtn = (sel, typ) => { const b = d.querySelector(sel); if (b) b.onclick = async () => {
-    b.disabled = true; d.querySelector('#z-msg').innerHTML = msg('Posílám…', 'warn');
-    const r = await posliZpravu([o], typ); d.querySelector('#z-msg').innerHTML = msg(r.text, r.ok ? 'ok' : 'warn'); b.disabled = false; detailZpravy(o);
-  }; };
-  zpravaBtn('#z-pripom', 'pripominka'); zpravaBtn('#z-schv', 'schvaleno');
-  const zn = d.querySelector('#z-nahled'); if (zn) zn.onclick = (e) => { e.preventDefault(); nahledZpravy(o, 'pripominka', d.querySelector('#z-nahled-box')); };
+  const zb = d.querySelector('#z-zprava'); if (zb) zb.onclick = () => zpravaPanel(d.querySelector('#z-panel'), [o], { hotovo: () => detailZpravy(o) });
   detailZpravy(o);
   if (S.smlouvy) detailSmlouva(o);
   if (S.vedeni || S.tbdb) detailHistorie(o);
 }
 
-const ZPRAVA_TYP = { whatsapp_upozorneni: 'WhatsApp upozornění (odesláno ručně)', schvaleno: 'schválení registrace', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
+const ZPRAVA_TYP = { vlastni: 'zpráva od kanceláře', nabidka: 'nabídka akce', whatsapp_nabidka: 'nabídka akce', whatsapp_upozorneni: 'upozornění (odesláno ručně)', schvaleno: 'schválení registrace', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
 async function detailZpravy(o) {
   const box = document.getElementById('det-zpravy'); if (!box) return;
-  const { data, error } = await sb.from('osoba_zprava').select('typ,vysledek,chyba,adresat,vytvoreno').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }).limit(10);
+  const { data, error } = await sb.from('osoba_zprava').select('typ,kanal,predmet,vysledek,chyba,adresat,vytvoreno,precteno_at').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }).limit(10);
   if (error) { box.textContent = 'Zprávy se nepodařilo načíst.'; return; }
-  box.innerHTML = (data || []).length ? `<ul class="hist">${data.map((z) => `<li><b>${new Date(z.vytvoreno).toLocaleString('cs-CZ')}</b> – ${esc(ZPRAVA_TYP[z.typ] || z.typ)}: ${esc(ZPRAVA_VYS[z.vysledek] || z.vysledek)}${z.chyba ? ' (' + esc(z.chyba) + ')' : ''}</li>`).join('')}</ul>` : 'Zatím žádné zprávy.';
+  box.innerHTML = (data || []).length ? `<ul class="hist">${data.map((z) => `<li><b>${new Date(z.vytvoreno).toLocaleString('cs-CZ')}</b> – ${esc(KANALY[z.kanal] || z.kanal)} · ${esc(ZPRAVA_TYP[z.typ] || z.typ)}${z.predmet && z.kanal !== 'whatsapp' ? ` „${esc(z.predmet)}“` : ''}: ${esc(ZPRAVA_VYS[z.vysledek] || z.vysledek)}${z.kanal === 'aplikace' ? (z.precteno_at ? ', přečteno ' + kdy(z.precteno_at) : ', zatím nepřečteno') : ''}${z.chyba ? ' (' + esc(z.chyba) + ')' : ''}</li>`).join('')}</ul>` : 'Zatím žádné zprávy.';
 }
 
 // ---------- úprava údajů člověka kanceláří ----------

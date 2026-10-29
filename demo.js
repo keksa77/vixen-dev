@@ -156,11 +156,20 @@ window.fetch = async (vstup, init = {}) => {
   if (p.endsWith('/functions/v1/hosteska-zprava')) {
     const vysledky = body.osoba_ids.map((id) => { const o = db.osoba.find((x) => x.id === id), k = db.kanc[id] || {};
       const v = k.neoslovovat ? ['vynechano', 'neoslovovat'] : !['prijata', 'aktivni'].includes(o.stav) ? ['vynechano', 'není přijatá ani aktivní'] : ['vyvoj_neodeslano', 'ukázka – nic se neposílá'];
-      if (v[0] !== 'vynechano') db.zpravyH.unshift({ osoba_id: id, typ: body.typ === 'schvaleno' ? 'schvaleno' : !db.profil[id] ? 'pripominka_profil' : 'pripominka_udaje', vysledek: v[0], chyba: v[1], vytvoreno: new Date().toISOString() });
+      if (v[0] !== 'vynechano') db.zpravyH.unshift({ osoba_id: id, kanal: 'email', predmet: body.zpravy?.[id]?.predmet || null, typ: body.typ === 'vlastni' ? body.zpravy?.[id]?.typ || 'vlastni' : body.typ === 'schvaleno' ? 'schvaleno' : !db.profil[id] ? 'pripominka_profil' : 'pripominka_udaje', vysledek: v[0], chyba: v[1], vytvoreno: new Date().toISOString() });
       return { osoba_id: id, vysledek: v[0], zprava: v[1] }; });
     const n = (x) => vysledky.filter((v) => v.vysledek === x).length;
     return odpoved({ vysledky, odeslano: 0, vyvoj: n('vyvoj_neodeslano'), vynechano: n('vynechano'), chyby: 0 });
   }
+  if (p.endsWith('/rpc/kancelar_zprava_aplikace')) { let ok = 0, vyn = 0;
+    body.p_zpravy.forEach((z) => { const o = db.osoba.find((x) => x.id === z.osoba_id);
+      if (!o || db.kanc[o.id]?.neoslovovat || !['prijata', 'aktivni'].includes(o.stav)) return vyn++;
+      ok++; db.zpravyH.unshift({ osoba_id: o.id, kanal: 'aplikace', typ: z.typ, predmet: z.predmet, text: z.text, vysledek: 'odeslano', precteno_at: null, vytvoreno: new Date().toISOString() }); });
+    return odpoved({ odeslano: ok, vynechano: vyn }); }
+  if (p.endsWith('/rpc/kancelar_whatsapp_zapis2')) { const o = db.osoba.find((x) => x.id === body.p_osoba);
+    db.zpravyH.unshift({ osoba_id: o.id, kanal: 'whatsapp', typ: body.p_typ, predmet: body.p_text, vysledek: 'odeslano', vytvoreno: new Date().toISOString() });
+    if (body.p_akce) { const n = db.nabidka.find((x) => x.akce_id === body.p_akce && x.osoba_id === o.id); if (n) n.whatsapp_at = new Date().toISOString(); }
+    return odpoved(null); }
   if (p.endsWith('/rest/v1/osoba_zprava')) return odpoved(db.zpravyH.filter((z) => z.osoba_id === hodnota(q, 'osoba_id')));
   for (const t of ['kraj', 'okres', 'zdravotni_pojistovna']) if (p.endsWith('/rest/v1/' + t)) return odpoved(CIS[t]);
   if (p.endsWith('/rest/v1/osoba')) {

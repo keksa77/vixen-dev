@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#23201b">
 <meta name="robots" content="noindex, nofollow">
 <title>Vixen – kancelář</title>
-<link rel="stylesheet" href="styles.css?v=116">
+<link rel="stylesheet" href="styles.css?v=117">
 <style>
 main{max-width:760px}
 .tik{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:#fff;cursor:pointer}
@@ -137,6 +137,15 @@ details.vf summary::-webkit-details-marker{display:none}
 .chip-m button{border:0;background:none;cursor:pointer;font-size:11px;color:var(--mute);padding:0 3px}
 .f-doprava{display:flex;gap:8px;margin-top:4px;font-size:12px;white-space:nowrap}.f-doprava label{display:flex;gap:3px;align-items:center;cursor:pointer}
 .ak-vyber .chk.mini{display:inline-flex;margin:4px 14px 0 0}
+/* dialog Poslat zprávu */
+.zp-panel{display:block!important;background:#fff;color:var(--ink);border:2px solid var(--gold);border-radius:12px;padding:12px 14px;margin-top:8px;max-width:1000px}
+.zp-hl{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.zp-druh,.zp-kanaly{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 0;align-items:center}.zp-druh label,.zp-kanaly label{display:flex;gap:5px;align-items:center;cursor:pointer;font-weight:600}.zp-kanaly small{color:var(--mute);font-weight:400}
+.zp-texty{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.zp-kanal{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:0}.zp-kanal legend{font-weight:700;padding:0 4px}.zp-kanal label{display:block;font-size:12.5px;color:var(--mute);margin-top:4px}
+.zp-kanal input,.zp-kanal textarea{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13.5px;color:var(--ink)}
+.zp-nahled{white-space:pre-wrap;background:#f7f4ee;border-radius:8px;padding:6px 8px;margin-top:6px;font-size:13px}.zp-nahled small{display:block;color:var(--mute)}
+.zp-vynech{margin:6px 0}
 /* akce */
 .ak-hlava{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.ak-hlava h1{margin:0}
 .ak-form{max-width:900px}.ak-form .card h2{margin:0 0 10px;font-size:18px}.ak-form h3{font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:14px 0 4px}
@@ -168,11 +177,11 @@ details.vf summary::-webkit-details-marker{display:none}
 <div class="top"><b>VIXEN · KANCELÁŘ</b><span id="kdo"></span><button id="odhlasit" class="hidden">Odhlásit</button></div>
 <div class="env" id="env"></div>
 <main id="app"><p class="mute">Načítám…</p></main>
-<script src="vendor/supabase.js?v=116"></script>
-<script src="config.js?v=116"></script>
-<script src="verze.js?v=116"></script>
-<script src="demo.js?v=116"></script>
-<script src="kontroly.js?v=116"></script>
-<script src="kancelar.js?v=116"></script>
+<script src="vendor/supabase.js?v=117"></script>
+<script src="config.js?v=117"></script>
+<script src="verze.js?v=117"></script>
+<script src="demo.js?v=117"></script>
+<script src="kontroly.js?v=117"></script>
+<script src="kancelar.js?v=117"></script>
 </body>
 </html>
