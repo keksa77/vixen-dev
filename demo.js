@@ -198,6 +198,8 @@ window.fetch = async (vstup, init = {}) => {
       if (body.p_rozhodnuti === 'potvrzeno') { const o = db.osoba.find((x) => x.id === n.osoba_id); o.smlouva_vyzva_at = o.smlouva_vyzva_at || new Date().toISOString(); } });
     return odpoved(body.p_nabidky.length);
   }
+  // odpověď hostesky (v ukázce ji jde nasimulovat, např. pro video)
+  if (p.endsWith('/rpc/nabidka_odpovez')) { const n = db.nabidka.find((x) => x.id === body.p_nabidka); const t = new Date().toISOString(); Object.assign(n, { odpoved: body.p_odpoved, odpoved_at: t, otevreno: n.otevreno || t }); return odpoved(null); }
   if (p.endsWith('/rpc/kancelar_nabidka_whatsapp')) { const n = db.nabidka.find((x) => x.id === body.p_nabidka); n.whatsapp_at = new Date().toISOString(); return odpoved(null); }
   if (p.endsWith('/rest/v1/klient')) {
     if (m === 'POST') { if (body.ico && db.klient.some((x) => x.ico === body.ico)) return odpoved({ message: 'duplicate key value violates unique constraint "klient_ico_uq"' }, 409);

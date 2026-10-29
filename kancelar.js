@@ -258,7 +258,7 @@ async function vNastenka() {
    <h2>Akce v příštích 7 dnech</h2>${tyden.length ? `<div class="ak-tyden">${tyden.map((a) => `<button class="ak-den" data-id="${a.id}"><b>${denAkce(a.datum)} · ${cas(a.sraz_cas)}</b>${esc(a.nazev)}<small>${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · obsazeno ${obsazeni(a).potvrzeno}/${a.pocet_lidi}${a.klient ? ' · ' + esc(a.klient.nazev) : ''}</small></button>`).join('')}</div>` : '<p class="mute">Žádná akce. Novou založíte v menu Akce.</p>'}`;
   zapniMenu();
   $app.querySelectorAll('.tile[data-i]').forEach((t) => (t.onclick = () => dlazdice[t.dataset.i][3]()));
-  document.getElementById('t-volna').onclick = () => { AK.filtr = 'nadchazejici'; vAkce(); };
+  document.getElementById('t-volna').onclick = () => { AKF = { ...AKF0(), stav: ['nadchazejici'], obsazeni: 'chybi' }; ulozAKF(); vAkce(); };
   $app.querySelectorAll('.ak-den').forEach((b) => (b.onclick = () => vAkceForm(S.akce.find((a) => a.id === b.dataset.id))));
 }
 function lideFiltr(f) { F = { ...F0(), ...f }; ulozF(); STRANA = 0; vLide(); }
@@ -454,10 +454,10 @@ async function zmenStav(o, novy, form, duvod, neoslovovat) {
 
 // ---------- LIDÉ: přehled všech hostesek s filtry, hromadnými akcemi a detailem ----------
 const KONFEKCE = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-const F0 = () => ({ text: '', tel: '', foto: '', stav: ['prijata', 'aktivni'], kraje: [], okres: '', zajem: [], kanal: [], vyskaOd: '', vyskaDo: '', konfekce: [], jazyk: '', ridicak: false, auto: false, profil: '', udaje: '', dpp: '', vekOd: '', vekDo: '', regOd: '' });
+const F0 = () => ({ text: '', tel: '', foto: '', stav: ['prijata', 'aktivni'], kraje: [], okresy: [], zajem: [], botaOd: '', botaDo: '', posledni: '', kanal: [], vyskaOd: '', vyskaDo: '', konfekce: [], jazyk: '', ridicak: false, auto: false, profil: '', udaje: '', dpp: '', vekOd: '', vekDo: '', regOd: '' });
 let F = F0(), RAZENI = { k: 'reg', smer: -1 }, STRANA = 0;
 const NA_STRANU = 50;
-try { const ul = JSON.parse(localStorage.getItem('vixen_lide_filtr') || 'null'); if (ul) F = { ...F0(), ...ul }; } catch {}
+try { const ul = JSON.parse(localStorage.getItem('vixen_lide_filtr') || 'null'); if (ul) { F = { ...F0(), ...ul }; if (ul.okres && !F.okresy.length) F.okresy = [ul.okres]; delete F.okres; } } catch {}
 const ulozF = () => { try { localStorage.setItem('vixen_lide_filtr', JSON.stringify(F)); } catch {} };
 const bezDiakritiky = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const datum = (d) => (d ? new Date(d).toLocaleDateString('cs-CZ') : '');
@@ -497,6 +497,12 @@ const nahled = (o, velky) => o.fotky[0]
   ? `<span class="foto${velky ? ' velka' : ''}" data-cesta="${esc(o.fotky[0])}"><img alt="" src="${esc(S.fotoUrl[o.fotky[0]] || '')}"></span>`
   : `<span class="foto bez${velky ? ' velka' : ''}" title="Bez fotky">${inicialy(o)}</span>`;
 
+// akce u člověka: poslední akce, na kterou byl potvrzený (už proběhla); nabídka na vybíranou akci; jiná potvrzená akce týž den
+const posledniAkce = (o) => (S.nabidky || []).filter((n) => n.osoba_id === o.id && n.rozhodnuti === 'potvrzeno')
+  .map((n) => (S.akce || []).find((a) => a.id === n.akce_id)).filter((a) => a && a.stav !== 'zrusena' && a.datum < dnesIso()).map((a) => a.datum).sort().pop() || null;
+const nabidnutoNaAkci = (o) => !!S.proAkci && (S.nabidky || []).some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id);
+const jinaAkceTenDen = (o) => !!S.proAkci && (S.nabidky || []).some((n) => n.osoba_id === o.id && n.rozhodnuti === 'potvrzeno' && n.akce_id !== S.proAkci.id
+  && (S.akce || []).some((a) => a.id === n.akce_id && a.stav !== 'zrusena' && a.datum === S.proAkci.datum));
 function filtruj() {
   const t = bezDiakritiky(F.text).trim(), tel = F.tel.replace(/\D/g, '');
   const tri = (hodnota, f) => !f || (f === 'ano' ? hodnota : !hodnota);
@@ -507,13 +513,15 @@ function filtruj() {
     if (F.foto && (F.foto === 'ano') !== o.fotky.length > 0) return false;
     if (F.stav.length && !F.stav.includes(o.stav)) return false;
     if (F.kraje.length && !krajeOsoby(o).some((k) => F.kraje.includes(k))) return false;
-    if (F.okres && !o.okresy.includes(F.okres)) return false;
+    if (F.okresy.length && !F.okresy.some((m) => o.okresy.includes(m))) return false;
     if (F.zajem.length && !F.zajem.some((z) => (o.zajem || []).includes(z))) return false;
     if (F.kanal.length && !F.kanal.some((z) => (o.kanal_kontaktu || []).includes(z))) return false;
     const p = o.profil || {};
     if (num(F.vyskaOd) && !(p.vyska_cm >= num(F.vyskaOd))) return false;
     if (num(F.vyskaDo) && !(p.vyska_cm <= num(F.vyskaDo))) return false;
     if (F.konfekce.length && !F.konfekce.includes(p.konfekce)) return false;
+    if (num(F.botaOd) && !(p.bota_eu >= num(F.botaOd))) return false;
+    if (num(F.botaDo) && !(p.bota_eu <= num(F.botaDo))) return false;
     if (F.jazyk && !(p.jazyky || []).some((j) => bezDiakritiky(j).includes(bezDiakritiky(F.jazyk)))) return false;
     if (F.ridicak && !p.ridicak) return false;
     if (F.auto && !p.vlastni_auto) return false;
@@ -521,13 +529,16 @@ function filtruj() {
     if (num(F.vekOd) && !(o.vek >= num(F.vekOd))) return false;
     if (num(F.vekDo) && !(o.vek <= num(F.vekDo))) return false;
     if (F.regOd && new Date(o.vytvoreno) < new Date(F.regOd)) return false;
+    if (F.posledni) { const d = posledniAkce(o); if (F.posledni === 'nikdy' ? d : !d || (F.posledni === 'do30' ? dniOd(d) > 30 : dniOd(d) <= 30)) return false; }
+    if (S.proAkci && S.proAkciSkryt?.nabidnuto && nabidnutoNaAkci(o)) return false;
+    if (S.proAkci && S.proAkciSkryt?.kolize && jinaAkceTenDen(o)) return false;
     return true;
   });
 }
 const RAD = {
   profil: (o) => (o.ma_profil ? 1 : 0), udaje: (o) => (o.udaje ? 1 : 0), dpp: (o) => (dppOk(o) ? 2 : o.dpp ? 1 : 0),
   jmeno: (o) => bezDiakritiky(o.prijmeni + ' ' + o.jmeno), stav: (o) => o.stav, vyska: (o) => o.profil?.vyska_cm ?? 0, foto: (o) => o.fotky.length,
-  vek: (o) => o.vek ?? 0, reg: (o) => o.vytvoreno, podklady: (o) => (o.ma_profil ? 1 : 0) + (o.udaje ? 1 : 0) + (dppOk(o) ? 1 : 0),
+  vek: (o) => o.vek ?? 0, posl: (o) => posledniAkce(o) || '', reg: (o) => o.vytvoreno, podklady: (o) => (o.ma_profil ? 1 : 0) + (o.udaje ? 1 : 0) + (dppOk(o) ? 1 : 0),
 };
 const serad = (l) => [...l].sort((a, b) => { const x = RAD[RAZENI.k](a), y = RAD[RAZENI.k](b); return (x > y ? 1 : x < y ? -1 : 0) * RAZENI.smer; });
 
@@ -539,19 +550,19 @@ function popiskyFiltru() {
   const pocet = (n) => (n ? ` (${n})` : '');
   const nast = {
     stav: () => (F.stav.length ? F.stav.map((k) => STAV_O[k][0]).join(', ') : 'vše'),
-    kraje: () => (F.kraje.length ? `kraje${pocet(F.kraje.length)}` : 'vše') + (F.okres ? ' · ' + (S.cis.okres[F.okres]?.mesto || '') : ''),
+    kraje: () => (F.kraje.length ? `kraje${pocet(F.kraje.length)}` : 'celé kraje'),
     zajem: () => (F.zajem.length ? F.zajem.map((k) => ZAJEM[k]).join(', ') : 'vše'),
     kanal: () => (F.kanal.length ? F.kanal.map((k) => KANAL[k]).join(', ') : 'kontakt přes'),
-    konfekce: () => (F.konfekce.length ? F.konfekce.join(', ') : 'velikost'),
+    konfekce: () => [F.konfekce.length && F.konfekce.join(', '), (F.botaOd || F.botaDo) && `bota ${F.botaOd || '…'}–${F.botaDo || '…'}`].filter(Boolean).join(' · ') || 'velikost, bota',
     jazykx: () => [F.ridicak && 'řidičák', F.auto && 'auto'].filter(Boolean).join(', ') || 'řidičák / auto',
     podklady: () => [F.profil && 'P ' + F.profil, F.udaje && 'Ú ' + F.udaje, F.dpp && 'D ' + F.dpp].filter(Boolean).join(', ') || 'vše',
   };
-  document.querySelectorAll('details.vf').forEach((d) => { const f = nast[d.dataset.vf]; d.querySelector('summary').textContent = f ? f() : ''; d.classList.toggle('aktivni', f && !/^(vše|kontakt přes|velikost|řidičák \/ auto)$/.test(f())); });
+  document.querySelectorAll('details.vf').forEach((d) => { const f = nast[d.dataset.vf]; d.querySelector('summary').textContent = f ? f() : ''; d.classList.toggle('aktivni', f && !/^(vše|celé kraje|kontakt přes|velikost, bota)$/.test(f())); });
 }
 
 async function vLide(hlaska = '') {
   $app.innerHTML = `${await menu('lide')}<p class="mute">Načítám lidi…</p>`; zapniMenu();
-  try { await nactiLidi(); } catch (e) { $app.innerHTML = (await menu('lide')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
+  try { await Promise.all([nactiLidi(), nactiAkce().catch(() => { S.akce = S.akce || []; S.nabidky = S.nabidky || []; })]); } catch (e) { $app.innerHTML = (await menu('lide')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
   const krajeVolby = Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs'));
   const okresy = Object.values(S.cis.okres).sort((a, b) => a.mesto.localeCompare(b.mesto, 'cs'));
   const th = (k, t) => (k ? `<th data-k="${k}" class="raz">${t}<i></i></th>` : `<th>${t}</th>`);
@@ -560,19 +571,19 @@ async function vLide(hlaska = '') {
     <span class="pozn">Filtry jsou v řádku pod názvy sloupců. Najetím na fotku se zvětší, kliknutím na řádek otevřete detail.</span></div>${vyberProAkciHtml()}${hlaska}
    <div id="hromadne" class="hromadne hidden"></div>
    <div class="tab-obal"><table class="lide-tab"><thead>
-    <tr><th class="vyb-sl"><input type="checkbox" id="vse" title="Vybrat vše podle filtru"></th>${th('foto', 'Foto')}${th('jmeno', 'Jméno')}${th('stav', 'Stav')}${th('', 'Telefon')}${th('', 'Kraje')}${th('', 'Zájem')}${th('vyska', 'Výška')}${th('', 'Jazyky')}${th('vek', 'Věk')}${th('profil', 'Profil')}${th('udaje', 'Údaje')}${th('dpp', 'DPP')}${th('', 'ČSSZ')}${th('reg', 'Registrace')}</tr>
+    <tr><th class="vyb-sl"><input type="checkbox" id="vse" title="Vybrat vše podle filtru"></th>${th('foto', 'Foto')}${th('jmeno', 'Jméno')}${th('stav', 'Stav')}${th('', 'Telefon')}${th('', 'Města')}${th('', 'Zájem')}${th('vyska', 'Výška')}${th('', 'Jazyky')}${th('vek', 'Věk')}${th('posl', 'Poslední akce')}${th('profil', 'Profil')}${th('udaje', 'Údaje')}${th('dpp', 'DPP')}${th('', 'ČSSZ')}${th('reg', 'Registrace')}</tr>
     <tr class="filtry-radek">
      <td></td>
      <td><select data-f="foto"><option value="">vše</option><option value="ano"${F.foto === 'ano' ? ' selected' : ''}>s fotkou</option><option value="ne"${F.foto === 'ne' ? ' selected' : ''}>bez</option></select></td>
      <td><input data-f="text" type="search" placeholder="jméno, e-mail, obec" value="${esc(F.text)}"></td>
      <td>${vf('stav', 'Stav', Object.entries(STAV_O).map(([k, v]) => [k, v[0]]))}</td>
      <td><input data-f="tel" type="search" inputmode="numeric" placeholder="část čísla" value="${esc(F.tel)}">${vf('kanal', 'Kontakt přes', Object.entries(KANAL))}</td>
-     <td>${vf('kraje', 'Kraje', krajeVolby, `<b>Okresní město</b><select data-f="okres"><option value="">– všechna –</option>${okresy.map((o) => `<option value="${o.kod}"${F.okres === o.kod ? ' selected' : ''}>${esc(o.mesto)}</option>`).join('')}</select>`)}</td>
+     <td class="f-mesta"><div id="mesta-f"></div><input data-mesto list="mesta-dl" placeholder="+ město" autocomplete="off"><datalist id="mesta-dl">${okresy.map((o) => `<option value="${esc(o.mesto)}">`).join('')}</datalist>${vf('kraje', 'Celé kraje', krajeVolby)}</td>
      <td>${vf('zajem', 'Zájem', Object.entries(ZAJEM))}</td>
-     <td><div class="od-do"><input data-f="vyskaOd" type="number" placeholder="od" value="${esc(F.vyskaOd)}"><input data-f="vyskaDo" type="number" placeholder="do" value="${esc(F.vyskaDo)}"></div>${vf('konfekce', 'Konfekce', KONFEKCE.map((k) => [k, k]))}</td>
-     <td><input data-f="jazyk" type="search" placeholder="jazyk" value="${esc(F.jazyk)}"><details class="vf" data-vf="jazykx"><summary></summary><div class="vf-panel"><b>Doprava</b>
-       <label><input type="checkbox" data-f="ridicak"${F.ridicak ? ' checked' : ''}> řidičák</label><label><input type="checkbox" data-f="auto"${F.auto ? ' checked' : ''}> vlastní auto</label></div></details></td>
+     <td><div class="od-do"><input data-f="vyskaOd" type="number" placeholder="od" value="${esc(F.vyskaOd)}"><input data-f="vyskaDo" type="number" placeholder="do" value="${esc(F.vyskaDo)}"></div>${vf('konfekce', 'Konfekce', KONFEKCE.map((k) => [k, k]), `<b>Bota (EU)</b><div class="od-do"><input data-f="botaOd" type="number" placeholder="od" value="${esc(F.botaOd)}"><input data-f="botaDo" type="number" placeholder="do" value="${esc(F.botaDo)}"></div>`)}</td>
+     <td><input data-f="jazyk" type="search" placeholder="jazyk" value="${esc(F.jazyk)}"><div class="f-doprava"><label><input type="checkbox" data-f="ridicak"${F.ridicak ? ' checked' : ''}> řidičák</label><label><input type="checkbox" data-f="auto"${F.auto ? ' checked' : ''}> auto</label></div></td>
      <td><div class="od-do"><input data-f="vekOd" type="number" placeholder="od" value="${esc(F.vekOd)}"><input data-f="vekDo" type="number" placeholder="do" value="${esc(F.vekDo)}"></div></td>
+     <td><select data-f="posledni" class="mini-sel"><option value="">vše</option>${[['nikdy', 'ještě nebyl/a'], ['do30', 'do 30 dní'], ['nad30', 'před víc než 30 dny']].map(([h, t]) => `<option value="${h}"${F.posledni === h ? ' selected' : ''}>${t}</option>`).join('')}</select></td>
      ${['profil', 'udaje', 'dpp'].map((k) => `<td><select data-f="${k}" class="mini-sel"><option value="">vše</option><option value="ano"${F[k] === 'ano' ? ' selected' : ''}>●&nbsp;má</option><option value="ne"${F[k] === 'ne' ? ' selected' : ''}>○&nbsp;chybí</option>${k === 'dpp' ? `<option value="vixen"${F.dpp === 'vixen' ? ' selected' : ''}>✍&nbsp;čeká na Vixen</option>` : ''}</select></td>`).join('')}<td></td>
      <td><input data-f="regOd" type="date" title="Registrace od" value="${esc(F.regOd)}"></td>
     </tr></thead><tbody id="telo"></tbody></table></div>
@@ -582,6 +593,16 @@ async function vLide(hlaska = '') {
    <div id="detail" class="detail hidden"></div>`;
   zapniMenu();
   document.getElementById('vymazat').onclick = () => { F = F0(); ulozF(); vLide(); };
+  // města: hledání v nabídce (bez diakritiky), vybraná jako štítky s ✕ – člověk vyhovuje, když může pracovat aspoň v jednom
+  const mestaF = () => { const box = document.getElementById('mesta-f');
+    box.innerHTML = F.okresy.map((m) => `<span class="chip-m">${esc(S.cis.okres[m]?.mesto || m)}<button type="button" data-x="${m}" title="Odebrat">✕</button></span>`).join('');
+    box.querySelectorAll('button[data-x]').forEach((b) => (b.onclick = () => { F.okresy = F.okresy.filter((m) => m !== b.dataset.x); ulozF(); STRANA = 0; mestaF(); vykresliTabulku(); })); };
+  mestaF();
+  const vstupM = $app.querySelector('input[data-mesto]');
+  vstupM.oninput = vstupM.onchange = () => { const h = bezDiakritiky(vstupM.value.trim()); if (!h) return;
+    const o = okresy.find((x) => bezDiakritiky(x.mesto) === h); if (!o) return;
+    if (!F.okresy.includes(o.kod)) F.okresy = [...F.okresy, o.kod]; vstupM.value = ''; ulozF(); STRANA = 0; mestaF(); vykresliTabulku(); };
+  $app.querySelectorAll('[data-skryt]').forEach((c) => (c.onchange = () => { S.proAkciSkryt[c.dataset.skryt] = c.checked; STRANA = 0; vykresliTabulku(); }));
   const zpetAk = document.getElementById('ak-vyber-zpet');
   if (zpetAk) zpetAk.onclick = () => { const a = S.proAkci; S.proAkci = null; S.vyber.clear(); vAkceForm(S.akce.find((x) => x.id === a.id)); };
   $app.querySelectorAll('thead th.raz').forEach((t) => (t.onclick = () => { RAZENI = { k: t.dataset.k, smer: RAZENI.k === t.dataset.k ? -RAZENI.smer : 1 }; vykresliTabulku(); }));
@@ -604,32 +625,34 @@ function vykresliTabulku() {
   STRANA = Math.min(STRANA, stran - 1);
   const list = vse.slice(STRANA * NA_STRANU, (STRANA + 1) * NA_STRANU);
   document.getElementById('pocet').textContent = `${vse.length} z ${S.lide.length}`;
-  const shrn = [F.text && `„${F.text}“`, F.stav.length && F.stav.map((k) => STAV_O[k][0]).join('+'), F.kraje.length && F.kraje.map((k) => S.cis.kraj[k]).join(', '), F.okres && S.cis.okres[F.okres]?.mesto,
-    F.zajem.length && F.zajem.map((k) => ZAJEM[k]).join('+'), (F.vyskaOd || F.vyskaDo) && `výška ${F.vyskaOd || '…'}–${F.vyskaDo || '…'}`, F.jazyk, F.foto && (F.foto === 'ano' ? 's fotkou' : 'bez fotky'),
+  const shrn = [F.text && `„${F.text}“`, F.stav.length && F.stav.map((k) => STAV_O[k][0]).join('+'), F.kraje.length && F.kraje.map((k) => S.cis.kraj[k]).join(', '), F.okresy.length && F.okresy.map((m) => S.cis.okres[m]?.mesto || m).join(', '),
+    F.zajem.length && F.zajem.map((k) => ZAJEM[k]).join('+'), (F.vyskaOd || F.vyskaDo) && `výška ${F.vyskaOd || '…'}–${F.vyskaDo || '…'}`, F.jazyk, F.ridicak && 'řidičák', F.auto && 'auto', (F.botaOd || F.botaDo) && `bota ${F.botaOd || '…'}–${F.botaDo || '…'}`, F.posledni && { nikdy: 'na akci ještě nebyl/a', do30: 'na akci do 30 dní', nad30: 'na akci před víc než 30 dny' }[F.posledni], F.foto && (F.foto === 'ano' ? 's fotkou' : 'bez fotky'),
     F.profil && `profil ${F.profil === 'ano' ? 'má' : 'chybí'}`, F.udaje && `údaje ${F.udaje === 'ano' ? 'má' : 'chybí'}`, F.dpp && `DPP ${F.dpp === 'ano' ? 'má' : F.dpp === 'vixen' ? 'čeká na podpis Vixen' : 'chybí'}`].filter(Boolean);
   document.getElementById('shrnuti').textContent = shrn.length ? 'filtr: ' + shrn.join(' · ') : 'bez filtru';
   $app.querySelectorAll('thead th.raz').forEach((t) => { t.classList.toggle('on', RAZENI.k === t.dataset.k); t.querySelector('i').textContent = RAZENI.k === t.dataset.k ? (RAZENI.smer > 0 ? ' ▲' : ' ▼') : ''; });
   const tecka = (c, t) => `<span class="tecka ${c}" title="${t}: ${c === 'ok' ? 'hotovo' : c === 'wa' ? 'čeká' : c === 'no' ? 'chybí' : '–'}">●</span>`;
   const zn = (ok, t, title) => `<span class="zn ${ok ? 'ok' : ''}" title="${title}: ${ok ? 'ano' : 'ne'}">${t}</span>`;
   const radek = (o) => {
-    const p = o.profil || {}, kr = krajeOsoby(o).map((k) => S.cis.kraj[k] || k);
+    const p = o.profil || {}, kr = krajeOsoby(o).map((k) => S.cis.kraj[k] || k), posl = posledniAkce(o);
+    const mesta = [...o.okresy].sort((x, y) => (F.okresy.includes(y) ? 1 : 0) - (F.okresy.includes(x) ? 1 : 0)).map((k) => S.cis.okres[k]?.mesto || k);
     return `<tr data-id="${o.id}"${S.vyber.has(o.id) ? ' class="vybran"' : ''}>
      <td><input type="checkbox" class="vyb" ${S.vyber.has(o.id) ? 'checked' : ''}></td>
      <td>${nahled(o)}</td>
-     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}<small>${esc(o.obec || '')}</small></td>
+     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}${jinaAkceTenDen(o) ? ' <span class="tag t-r">jiná akce tento den</span>' : ''}<small>${esc(o.obec || '')}</small></td>
      <td><span class="tag ${STAV_O[o.stav][1]}"${o.duvod ? ` title="Důvod: ${esc(DUVOD[o.duvod] || o.duvod)}"` : ''}>${STAV_O[o.stav][0]}</span>${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>
      <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a><small>${esc((o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '))}</small></td>
-     <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}<small>${o.okresy.length} měst</small></td>
+     <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(mesta.slice(0, 3).join(', '))}${mesta.length > 3 ? ` +${mesta.length - 3}` : ''}<small>${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}</small></td>
      <td>${esc((o.zajem || []).map((z) => ZAJEM[z] || z).join(', '))}</td>
      <td class="nw">${p.vyska_cm ? p.vyska_cm + ' cm' : '–'}<small>${esc(p.konfekce || '')}${p.bota_eu ? ' · ' + p.bota_eu : ''}</small></td>
      <td>${esc((p.jazyky || []).join(', ')) || '–'}<small>${p.ridicak ? 'řidičák' : ''}${p.vlastni_auto ? ' · auto' : ''}</small></td>
      <td>${o.vek ?? '–'}</td>
+     <td class="nw">${posl ? datum(posl) + `<small>před ${dniOd(posl)} dny</small>` : '<span class="mute">–</span>'}</td>
      <td class="semf">${tecka(o.ma_profil ? 'ok' : 'no', 'Profil')}</td><td class="semf">${tecka(o.udaje ? 'ok' : 'no', 'Údaje pro smlouvu')}</td>
      <td class="semf">${tecka(o.dpp === 'uzavreno' ? 'ok' : o.dpp && o.dpp !== 'odstoupeno' ? 'wa' : 'no', o.dpp ? 'DPP – ' + DPP_TXT[o.dpp] : 'DPP')}</td><td class="semf">${tecka('', 'ČSSZ – připravujeme')}</td>
      <td>${datum(o.vytvoreno)}</td></tr>`;
   };
   const telo = document.getElementById('telo');
-  telo.innerHTML = list.length ? list.map(radek).join('') : `<tr><td colspan="15" class="prazdno">Filtru nikdo neodpovídá.</td></tr>`;
+  telo.innerHTML = list.length ? list.map(radek).join('') : `<tr><td colspan="16" class="prazdno">Filtru nikdo neodpovídá.</td></tr>`;
   document.getElementById('strany').innerHTML = stran > 1 ? `<div class="strany"><button class="btn o mini" id="pred"${STRANA ? '' : ' disabled'}>←</button> strana ${STRANA + 1} z ${stran} <button class="btn o mini" id="dal"${STRANA < stran - 1 ? '' : ' disabled'}>→</button></div>` : '';
   telo.querySelectorAll('tr[data-id]').forEach((tr) => (tr.onclick = (e) => {
     if (e.target.closest('a')) return;
@@ -767,9 +790,33 @@ const denAkce = (iso) => { const d = new Date(iso + 'T12:00:00'); return `${DEN_
 const cas = (t) => (t ? String(t).slice(0, 5) : '');
 const KONTAKT_ROLE = [['primarni', 'Primární kontakt'], ['na_akci', 'Kontakt na akci'], ['dalsi', 'Další kontakt'], ['dalsi', 'Další kontakt']];
 const mapa = (adresa) => adresa ? `<span class="ak-mapa">Otevřít v mapě: <a href="https://mapy.com/fnc/v1/search?query=${encodeURIComponent(adresa)}" target="_blank" rel="noopener">Mapy.cz</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(adresa)}" target="_blank" rel="noopener">Google Maps</a></span>` : '';
-const AK = { filtr: 'nadchazejici', hledat: '' };
-const AK_FILTR = { nadchazejici: 'Nadcházející', probehle: 'Proběhlé', zrusene: 'Zrušené' };
-const akceVeFiltru = (a, f) => (f === 'zrusene' ? a.stav === 'zrusena' : a.stav !== 'zrusena' && (f === 'probehle' ? a.datum < dnesIso() : a.datum >= dnesIso()));
+// filtry akcí: řádek pod názvy sloupců jako v Lidé; výchozí = všechny akce
+const AKF0 = () => ({ text: '', stav: [], od: '', do: '', klient: '', okresy: [], obsazeni: '', uzaverka: '' });
+let AKF = AKF0(), AKRAD = { k: 'datum', smer: 1 };
+try { const ul = JSON.parse(localStorage.getItem('vixen_akce_filtr') || 'null'); if (ul) AKF = { ...AKF0(), ...ul }; } catch {}
+const ulozAKF = () => { try { localStorage.setItem('vixen_akce_filtr', JSON.stringify(AKF)); } catch {} };
+const AK_STAV = { dnes: ['dnes', 't-w'], nadchazejici: ['nadcházející', 't-ok'], probehla: ['proběhla', 't-b'], zrusena: ['zrušená', 't-r'] };
+const stavAkce = (a) => (a.stav === 'zrusena' ? 'zrusena' : a.datum === dnesIso() ? 'dnes' : a.datum > dnesIso() ? 'nadchazejici' : 'probehla');
+const AK_OBS = { nenabidnuto: 'nenabídnuto', chybi: 'chybí lidi', plno: 'obsazeno', zajem: 'čeká se zájmem' };
+const obsStav = (a) => { const o = obsazeni(a); return { nenabidnuto: !o.celkem, chybi: o.celkem > 0 && o.potvrzeno < a.pocet_lidi, plno: o.potvrzeno >= a.pocet_lidi, zajem: o.zajem > 0 }; };
+function filtrujAkce() {
+  const h = bezDiakritiky(AKF.text.trim()), ted = new Date();
+  return S.akce.filter((a) => {
+    if (h && !a.hledej.includes(h)) return false;
+    if (AKF.stav.length && !AKF.stav.includes(stavAkce(a)) && !(AKF.stav.includes('nadchazejici') && stavAkce(a) === 'dnes')) return false;
+    if (AKF.od && a.datum < AKF.od) return false;
+    if (AKF.do && a.datum > AKF.do) return false;
+    if (AKF.klient && (AKF.klient === '-' ? a.klient_id : a.klient_id !== AKF.klient)) return false;
+    if (AKF.okresy.length && !AKF.okresy.includes(a.okres_kod)) return false;
+    if (AKF.obsazeni && !obsStav(a)[AKF.obsazeni]) return false;
+    if (AKF.uzaverka === 'bezi' && !(a.uzaverka && new Date(a.uzaverka) > ted)) return false;
+    if (AKF.uzaverka === 'minula' && !(a.uzaverka && new Date(a.uzaverka) <= ted)) return false;
+    if (AKF.uzaverka === 'bez' && a.uzaverka) return false;
+    return true;
+  });
+}
+const AK_RAD = { datum: (a) => a.datum + cas(a.sraz_cas), nazev: (a) => bezDiakritiky(a.nazev), klient: (a) => bezDiakritiky(a.klient?.nazev || '~'),
+  mesto: (a) => bezDiakritiky(S.cis.okres[a.okres_kod]?.mesto || ''), obs: (a) => obsazeni(a).potvrzeno / a.pocet_lidi, uzav: (a) => a.uzaverka || '~', stav: (a) => ['dnes', 'nadchazejici', 'probehla', 'zrusena'].indexOf(stavAkce(a)) };
 
 async function nactiAkce() {
   await ciselniky();
@@ -785,28 +832,65 @@ async function nactiAkce() {
 async function vAkce(hlaska = '') {
   $app.innerHTML = `${await menu('akce')}<p class="mute">Načítám…</p>`; zapniMenu();
   try { await nactiAkce(); } catch (e) { $app.innerHTML = (await menu('akce')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
-  const pocty = Object.fromEntries(Object.keys(AK_FILTR).map((f) => [f, S.akce.filter((a) => akceVeFiltru(a, f)).length]));
-  $app.innerHTML = `${await menu('akce')}<div class="reg-hlava"><h1>Akce</h1>
-    <div class="reg-taby">${Object.entries(AK_FILTR).map(([f, t]) => `<button data-f="${f}"${AK.filtr === f ? ' class="on"' : ''}>${t}<b>${pocty[f]}</b></button>`).join('')}</div>
-    <input type="search" id="ak-hledat" placeholder="Hledat akci, klienta, město…" value="${esc(AK.hledat)}"><button class="btn mini" id="ak-nova">+ Nová akce</button></div>
-   ${hlaska}<div class="tab-obal"><table class="lide-tab ak-tab"><thead><tr><th>Datum</th><th>Sraz</th><th>Akce</th><th>Klient</th><th>Město</th><th>Obsazeno</th><th>Uzávěrka</th></tr></thead><tbody id="ak-telo"></tbody></table></div>`;
+  const okresy = Object.values(S.cis.okres).sort((a, b) => a.mesto.localeCompare(b.mesto, 'cs'));
+  const th = (kl, t) => (kl ? `<th data-k="${kl}" class="raz">${t}<i></i></th>` : `<th>${t}</th>`);
+  const sel = (f, volby, prazdna = 'vše') => `<select data-af="${f}"><option value="">${prazdna}</option>${volby.map(([h, t]) => `<option value="${esc(h)}"${AKF[f] === h ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  $app.innerHTML = `${await menu('akce')}<div class="lide-hlava"><h1>Akce</h1><span id="ak-pocet" class="mute"></span><span id="ak-shrnuti" class="shrnuti"></span>
+    <button class="btn o mini" id="ak-vymazat">Vymazat filtry</button><button class="btn mini" id="ak-nova">+ Nová akce</button>
+    <span class="pozn">Filtry jsou v řádku pod názvy sloupců, řadit jde kliknutím na název sloupce.</span></div>${hlaska}
+   <div class="tab-obal"><table class="lide-tab ak-tab"><thead>
+    <tr>${th('datum', 'Datum')}<th>Sraz</th>${th('nazev', 'Akce')}${th('stav', 'Stav')}${th('klient', 'Klient')}${th('mesto', 'Město')}${th('obs', 'Obsazeno')}${th('uzav', 'Uzávěrka')}</tr>
+    <tr class="filtry-radek">
+     <td><div class="od-do"><input data-af="od" type="date" title="Od" value="${esc(AKF.od)}"><input data-af="do" type="date" title="Do" value="${esc(AKF.do)}"></div>
+      <div class="ak-rychle"><button type="button" data-r="tyden">7 dní</button><button type="button" data-r="mesic">měsíc</button><button type="button" data-r="">vše</button></div></td>
+     <td></td>
+     <td><input data-af="text" type="search" placeholder="název, adresa, klient" value="${esc(AKF.text)}"></td>
+     <td><details class="vf" data-vf="akstav"><summary></summary><div class="vf-panel"><b>Stav</b>${[['nadchazejici', 'nadcházející (i dnešní)'], ['probehla', 'proběhlé'], ['zrusena', 'zrušené']]
+       .map(([h, t]) => `<label><input type="checkbox" data-af="stav" value="${h}"${AKF.stav.includes(h) ? ' checked' : ''}> ${t}</label>`).join('')}</div></details></td>
+     <td>${sel('klient', [['-', '– bez klienta –'], ...S.klienti.map((x) => [x.id, x.nazev])])}</td>
+     <td class="f-mesta"><div id="ak-mesta-f"></div><input data-akmesto list="ak-mesta-dl" placeholder="+ město" autocomplete="off"><datalist id="ak-mesta-dl">${okresy.map((o) => `<option value="${esc(o.mesto)}">`).join('')}</datalist></td>
+     <td>${sel('obsazeni', Object.entries(AK_OBS))}</td>
+     <td>${sel('uzaverka', [['bezi', 'běží'], ['minula', 'minula'], ['bez', 'bez uzávěrky']])}</td>
+    </tr></thead><tbody id="ak-telo"></tbody></table></div>`;
   zapniMenu();
+  const popisky = () => { const d = $app.querySelector('details[data-vf=akstav]'); d.querySelector('summary').textContent = AKF.stav.length ? AKF.stav.map((s) => ({ nadchazejici: 'nadcházející', probehla: 'proběhlé', zrusena: 'zrušené' })[s]).join(', ') : 'vše'; d.classList.toggle('aktivni', AKF.stav.length > 0); };
   const vykresli = () => {
-    const h = bezDiakritiky(AK.hledat.trim());
-    let l = S.akce.filter((a) => akceVeFiltru(a, AK.filtr) && (!h || a.hledej.includes(h)));
-    if (AK.filtr !== 'nadchazejici') l = l.reverse();
-    document.getElementById('ak-telo').innerHTML = l.length ? l.map((a) => `<tr data-id="${a.id}"${a.datum === dnesIso() ? ' class="ak-dnes"' : ''}>
-      <td class="nw"><b>${denAkce(a.datum)}</b>${a.datum === dnesIso() ? '<small>dnes</small>' : ''}</td><td class="nw">${cas(a.sraz_cas)}${a.prace_od ? `<small>práce ${cas(a.prace_od)}–${cas(a.prace_do)}</small>` : ''}</td>
-      <td><b>${esc(a.nazev)}</b>${a.stav === 'zrusena' ? ' <span class="tag t-r">zrušená</span>' : ''}<small>${esc(a.adresa)}</small></td>
+    const vse = S.akce.length, l = [...filtrujAkce()].sort((x, y) => { const a = AK_RAD[AKRAD.k](x), b = AK_RAD[AKRAD.k](y); return (a > b ? 1 : a < b ? -1 : 0) * AKRAD.smer; });
+    document.getElementById('ak-pocet').textContent = `${l.length} z ${vse}`;
+    const shrn = [AKF.text && `„${AKF.text}“`, AKF.stav.length && $app.querySelector('details[data-vf=akstav] summary').textContent, (AKF.od || AKF.do) && `${AKF.od ? datum(AKF.od) : '…'} – ${AKF.do ? datum(AKF.do) : '…'}`,
+      AKF.klient && (AKF.klient === '-' ? 'bez klienta' : S.klienti.find((x) => x.id === AKF.klient)?.nazev), AKF.okresy.length && AKF.okresy.map((m) => S.cis.okres[m]?.mesto || m).join(', '),
+      AKF.obsazeni && AK_OBS[AKF.obsazeni], AKF.uzaverka && 'uzávěrka ' + { bezi: 'běží', minula: 'minula', bez: '–' }[AKF.uzaverka]].filter(Boolean);
+    document.getElementById('ak-shrnuti').textContent = shrn.length ? 'filtr: ' + shrn.join(' · ') : 'všechny akce';
+    $app.querySelectorAll('thead th.raz').forEach((t) => { t.classList.toggle('on', AKRAD.k === t.dataset.k); t.querySelector('i').textContent = AKRAD.k === t.dataset.k ? (AKRAD.smer > 0 ? ' ▲' : ' ▼') : ''; });
+    document.getElementById('ak-telo').innerHTML = l.length ? l.map((a) => { const s = stavAkce(a);
+      return `<tr data-id="${a.id}" class="${s === 'dnes' ? 'ak-dnes' : ''}${s === 'probehla' || s === 'zrusena' ? ' ak-stara' : ''}">
+      <td class="nw"><b>${denAkce(a.datum)}</b></td><td class="nw">${cas(a.sraz_cas)}${a.prace_od ? `<small>práce ${cas(a.prace_od)}–${cas(a.prace_do)}</small>` : ''}</td>
+      <td><b>${esc(a.nazev)}</b><small>${esc(a.adresa)}</small></td><td><span class="tag ${AK_STAV[s][1]}">${AK_STAV[s][0]}</span></td>
       <td>${esc(a.klient?.nazev || '–')}</td><td>${esc(S.cis.okres[a.okres_kod]?.mesto || a.okres_kod)}</td><td class="nw">${obsazeniZn(a)}</td>
-      <td class="nw">${a.uzaverka ? kdy(a.uzaverka) : '–'}</td></tr>`).join('')
-      : `<tr><td colspan="7" class="prazdno">${h ? 'Hledání nic nenašlo.' : AK.filtr === 'nadchazejici' ? 'Žádná nadcházející akce. Založte ji tlačítkem „+ Nová akce“.' : 'Nic tu není.'}</td></tr>`;
+      <td class="nw">${a.uzaverka ? kdy(a.uzaverka) : '–'}</td></tr>`; }).join('')
+      : `<tr><td colspan="8" class="prazdno">${vse ? 'Filtru žádná akce neodpovídá.' : 'Zatím žádná akce. Založte ji tlačítkem „+ Nová akce“.'}</td></tr>`;
     document.querySelectorAll('#ak-telo tr[data-id]').forEach((r) => (r.onclick = () => vAkceForm(S.akce.find((a) => a.id === r.dataset.id))));
   };
-  vykresli();
-  $app.querySelectorAll('.reg-taby button').forEach((b) => (b.onclick = () => { AK.filtr = b.dataset.f; vAkce(); }));
-  document.getElementById('ak-hledat').oninput = (e) => { AK.hledat = e.target.value; vykresli(); };
+  const zmena = () => { ulozAKF(); popisky(); vykresli(); };
+  const mesta = () => { const box = document.getElementById('ak-mesta-f');
+    box.innerHTML = AKF.okresy.map((m) => `<span class="chip-m">${esc(S.cis.okres[m]?.mesto || m)}<button type="button" data-x="${m}" title="Odebrat">✕</button></span>`).join('');
+    box.querySelectorAll('button[data-x]').forEach((b) => (b.onclick = () => { AKF.okresy = AKF.okresy.filter((m) => m !== b.dataset.x); mesta(); zmena(); })); };
+  const vstup = $app.querySelector('input[data-akmesto]');
+  vstup.oninput = vstup.onchange = () => { const h = bezDiakritiky(vstup.value.trim()); const o = h && okresy.find((x) => bezDiakritiky(x.mesto) === h); if (!o) return;
+    if (!AKF.okresy.includes(o.kod)) AKF.okresy = [...AKF.okresy, o.kod]; vstup.value = ''; mesta(); zmena(); };
+  $app.querySelectorAll('thead [data-af]').forEach((el) => (el.oninput = el.onchange = () => {
+    const f = el.dataset.af, pred = JSON.stringify(AKF[f]);
+    AKF[f] = f === 'stav' ? [...$app.querySelectorAll('thead input[data-af=stav]:checked')].map((x) => x.value) : el.value;
+    if (JSON.stringify(AKF[f]) !== pred) zmena();
+  }));
+  $app.querySelectorAll('.ak-rychle button').forEach((b) => (b.onclick = () => {
+    AKF.od = b.dataset.r ? dnesIso() : ''; AKF.do = b.dataset.r ? posunDen(dnesIso(), b.dataset.r === 'tyden' ? 7 : 31) : '';
+    $app.querySelector('[data-af=od]').value = AKF.od; $app.querySelector('[data-af=do]').value = AKF.do; zmena(); }));
+  $app.querySelectorAll('thead th.raz').forEach((t) => (t.onclick = () => { AKRAD = { k: t.dataset.k, smer: AKRAD.k === t.dataset.k ? -AKRAD.smer : 1 }; vykresli(); }));
+  document.addEventListener('click', (e) => { if (!e.target.closest('details.vf')) $app.querySelectorAll('details.vf[open]').forEach((d) => d.removeAttribute('open')); });
+  document.getElementById('ak-vymazat').onclick = () => { AKF = AKF0(); ulozAKF(); vAkce(); };
   document.getElementById('ak-nova').onclick = () => vAkceForm(null);
+  mesta(); popisky(); vykresli(); horniPosuvniky();
 }
 
 // podepsaný odkaz na fotku oblečení (soukromé úložiště 'akce')
@@ -1048,14 +1132,17 @@ async function obsazeniSekce(a, probehla, hlaska = '') {
 function lideProAkci(a) {
   const p = a.pozadavky || {};
   S.proAkci = a; S.vyber.clear();
-  F = { ...F0(), okres: a.okres_kod, vyskaOd: p.vyska_od ? String(p.vyska_od) : '', jazyk: p.jazyk || '', ridicak: !!p.ridicak, auto: !!p.auto };
+  S.proAkciSkryt = { nabidnuto: true, kolize: true };
+  F = { ...F0(), okresy: [a.okres_kod], vyskaOd: p.vyska_od ? String(p.vyska_od) : '', jazyk: p.jazyk || '', ridicak: !!p.ridicak, auto: !!p.auto };
   ulozF(); STRANA = 0; vLide();
 }
 function vyberProAkciHtml() {
   const a = S.proAkci; if (!a) return '';
   const uz = nabidkyAkce(a).length;
   return `<div class="ak-vyber"><div><b>Výběr lidí pro akci: ${esc(a.nazev)}</b> · ${denAkce(a.datum)} · ${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · potřeba ${a.pocet_lidi}<br>
-    <span class="pozn">Filtr je předvyplněný podle města a požadavků akce – upravit ho můžete. Zaškrtněte lidi a klikněte „Poslat nabídku na akci“.${uz ? ` Nabídku už má ${uz} lidí (štítek „nabídnuto“).` : ''}</span></div>
+    <span class="pozn">Filtr je předvyplněný podle města a požadavků akce – další města a filtry přidáte v řádku pod názvy sloupců. Zaškrtněte lidi a klikněte „Poslat nabídku na akci“.</span><br>
+    <label class="chk mini"><input type="checkbox" data-skryt="nabidnuto"${S.proAkciSkryt.nabidnuto ? ' checked' : ''}> <span>skrýt ty, kdo nabídku už mají (${uz})</span></label>
+    <label class="chk mini"><input type="checkbox" data-skryt="kolize"${S.proAkciSkryt.kolize ? ' checked' : ''}> <span>skrýt potvrzené na jiné akci ve stejný den</span></label></div>
     <button class="btn o mini" id="ak-vyber-zpet">← Zpět na akci</button></div>`;
 }
 function poslatNabidku(el, osoby, info) {
