@@ -131,8 +131,12 @@ async function start() {
     sb.from('zdravotni_pojistovna').select('kod,nazev').order('kod'),
     sb.from('banka').select('kod,nazev').order('nazev'),
   ]).then(([kraj, okres, stat, zp, banka]) => { S.cis = { kraj: kraj.data || [], okres: okres.data || [], stat: stat.data || [], zp: zp.data || [], banka: banka.data || [] }; });
+  const token = (location.hash.match(/^#n=([0-9a-z-]{8,})$/i) || [])[1];
+  if (token) { try { localStorage.setItem('vixen_po_prihlaseni', 'nabidky'); } catch {}
+    S.odkaz = (await sb.rpc('nabidka_odkaz', { p_token: token })).data || null; }
   const { data } = await sb.auth.getSession();
   if (data.session) { await S.cisP; return poPrihlaseni(); }
+  if (token) return vOdkazNabidky();
   if (location.hash === '#registrace') { await S.cisP; return vRegistrace(); }
   if (location.hash === '#plocha') return vInstalace(); // přímý odkaz na návod (např. ze zprávy WhatsApp)
   vUvod();
@@ -319,10 +323,12 @@ async function poPrihlaseni() {
   document.getElementById('odhlasit').classList.remove('hidden');
   document.getElementById('tabs').classList.remove('hidden');
   await nacti();
-  ukaz('prehled');
+  let cil = 'prehled'; try { if (localStorage.getItem('vixen_po_prihlaseni') === 'nabidky') { cil = 'nabidky'; } } catch {}
+  if (location.hash.startsWith('#n=')) history.replaceState(null, '', location.pathname + location.search);
+  ukaz(cil);
 }
 async function nacti() {
-  const [o, p, n, d, oo, ff, sch] = await Promise.all([
+  const [o, p, n, d, oo, ff, sch, nab] = await Promise.all([
     sb.from('osoba').select('*').single(),
     sb.from('osoba_profil').select('*').maybeSingle(),
     sb.from('osoba_nastup').select('*').maybeSingle(),
@@ -330,7 +336,9 @@ async function nacti() {
     sb.from('osoba_okres').select('okres_kod'),
     sb.from('osoba_foto').select('id,cesta,poradi').order('poradi'),
     sb.rpc('parametr_dnes', { p_kod: 'registrace_schvalovat' }),
+    sb.rpc('moje_nabidky', { p_oznacit: false }),
   ]);
+  S.nabidky = Array.isArray(nab?.data) ? nab.data : [];
   S.okresy = (oo.data || []).map((x) => x.okres_kod);
   S.fotky = ff.data || [];
   S.schvalovat = sch.error ? true : sch.data !== false;
@@ -341,7 +349,7 @@ function ukaz(v) {
   S.view = v;
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
   navStav();
-  ({ prehled: vPrehled, profil: vProfil, forma: vForma, nastup: vNastup, dokumenty: vDokumenty, instalace: vInstalace })[v]();
+  ({ prehled: vPrehled, nabidky: vNabidky, profil: vProfil, forma: vForma, nastup: vNastup, dokumenty: vDokumenty, instalace: vInstalace })[v]();
   window.scrollTo(0, 0);
 }
 const schvalena = () => S.osoba && S.osoba.stav !== 'uchazec' && S.osoba.stav !== 'odmitnuta';
@@ -366,7 +374,9 @@ function kroky() {
     cekani: 'Vaši registraci prochází kancelář. Po schválení vám dáme vědět.' });
   k.push({ id: 'profil', t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil && S.fotky.length > 0, popis: 'fotky, výška, jazyky, kdy můžete – upravit můžete kdykoli', tlac: 'Doplnit profil' });
   k.push({ id: 'plocha', t: 'Vixen na ploše telefonu', v: 'instalace', kdo: 'vy', volitelny: true, hotovo: naPlose(), popis: 'nabídky akcí zobrazujeme přednostně v aplikaci', tlac: 'Přidat na plochu' });
-  k.push({ id: 'akce', t: 'Nabídka akce', kdo: 'kanc', hotovo: vyzvan(), popis: 'nabídky akcí uvidíte v aplikaci',
+  const potvrzene = (S.nabidky || []).filter((x) => x.rozhodnuti === 'potvrzeno').length;
+  k.push({ id: 'akce', t: 'Nabídka akce', kdo: 'kanc', hotovo: vyzvan() || potvrzene > 0, v: S.nabidky?.length ? 'nabidky' : undefined,
+    popis: potvrzene ? `potvrzené akce: ${potvrzene}` : S.nabidky?.length ? `nabídky: ${S.nabidky.length} – podívejte se a odpovězte` : 'nabídky akcí uvidíte v aplikaci',
     cekani: 'Jakmile pro vás budeme mít akci, dáme vám vědět. Před první akcí vás požádáme o údaje pro smlouvu.' });
   k.push({ id: 'smlouva', t: 'Smlouva před první akcí', ...smlouvaKrok() });
   if (S.osoba.forma_spoluprace === 'dpp') k.push({ id: 'cssz', t: 'Přihlášení na ČSSZ', kdo: 'kanc', hotovo: false, popis: 'kancelář vás přihlásí před první akcí',
@@ -375,6 +385,8 @@ function kroky() {
 }
 function navStav() {
   if (!S.osoba) return;
+  const nb = document.querySelector('#tabs button[data-v=nabidky]'), nove = noveNabidky().length;
+  if (nb) { nb.querySelector('i').textContent = nove || '✉'; nb.classList.toggle('dalsi', nove > 0); }
   const k = kroky(), ok = schvalena(), dalsi = k.find((x) => !x.hotovo && !x.volitelny);
   const prof = k.find((x) => x.id === 'profil'), sml = k.find((x) => x.id === 'smlouva');
   const mapa = { profil: [prof, ok], nastup: [sml, ok && vyzvan()], dokumenty: [sml, ok && vyzvan()] };
@@ -479,16 +491,100 @@ function vPrehled() {
   $app.innerHTML = `<h1>Dobrý den, ${esc(K.vokativ(S.osoba.jmeno))}</h1>
    <p class="mute">Vaše cesta k první akci – hotovo ${hotovych} z ${k.length}</p>
    <div class="prubeh"><div style="width:${Math.round((hotovych / k.length) * 100)}%"></div></div>
+   ${noveNabidky().length ? `<div class="ted nab-karta"><b>Máte ${noveNabidky().length === 1 ? 'novou nabídku akce' : 'nové nabídky akcí (' + noveNabidky().length + ')'}</b>Podívejte se na podrobnosti a odpovězte – místa se obsazují rychle.<button class="btn" id="k-nab">Zobrazit nabídky →</button></div>` : ''}
    ${ted}
    ${plochaKarta()}
    <ol class="cesta">${k.map((x, i) => `<li class="${stav(x)}"${x.v && schvalena() && (x.id !== 'smlouva' || vyzvan()) ? ` data-v="${x.v}"` : ''}>
      <span class="c">${x.hotovo ? '✓' : i + 1}</span>
      <span class="t"><b>${esc(x.t)}<span class="kdo ${x.kdo === 'vy' ? 'vy' : 'kanc'}">${x.kdo === 'vy' ? 'vy' : 'kancelář'}</span></b><small>${esc(x.popis)}</small></span></li>`).join('')}</ol>`;
   const tl = document.getElementById('dal'); if (tl) tl.onclick = () => ukaz(dalsi.v);
+  const kn = document.getElementById('k-nab'); if (kn) kn.onclick = () => ukaz('nabidky');
   $app.querySelectorAll('.cesta li[data-v]').forEach((el) => (el.onclick = () => ukaz(el.dataset.v)));
   zapniPlochu();
 }
 
+
+// ---------- NABÍDKY AKCÍ (modul 2, etapa B) ----------
+// Hosteska vidí nabídky, odpovídá „Mám zájem“ / „Nemůžu“; kontakty a podrobnosti až po potvrzení kanceláří.
+const DEN_T = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+const denAkce = (iso) => { const d = new Date(iso + 'T12:00:00'); return `${DEN_T[d.getDay()]} ${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`; };
+const cas = (t) => (t ? String(t).slice(0, 5) : '');
+const dnesIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const aktivni = (n) => n.akce.stav !== 'zrusena' && n.akce.datum >= dnesIso();
+const noveNabidky = () => (S.nabidky || []).filter((n) => aktivni(n) && !n.odpoved && !n.rozhodnuti && !(n.akce.uzaverka && new Date(n.akce.uzaverka) < new Date()));
+const kdyKratce = (d) => new Date(d).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+const mapaOdkaz = (adresa) => `<a href="https://mapy.com/fnc/v1/search?query=${encodeURIComponent(adresa)}" target="_blank" rel="noopener">Mapy.cz</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(adresa)}" target="_blank" rel="noopener">Google Maps</a>`;
+const ROLE_K = { primarni: 'kontakt klienta', na_akci: 'kontakt na místě', dalsi: 'další kontakt' };
+const kontakt = (k, popis) => k && (k.jmeno || k.telefon) ? `<li><b>${esc(k.jmeno || '')}</b> <span class="mute">${esc(popis)}</span>${k.telefon ? ` · <a href="tel:${esc(k.telefon)}">${esc(k.telefon)}</a>` : ''}</li>` : '';
+
+async function vNabidky(hlaska = '') {
+  $app.innerHTML = '<p class="mute">Načítám nabídky…</p>';
+  const { data, error } = await sb.rpc('moje_nabidky', { p_oznacit: true });
+  if (error) { $app.innerHTML = msg('Nabídky se nepodařilo načíst: ' + esc(chybaText(error)), 'bad'); return; }
+  S.nabidky = data || []; navStav();
+  try { localStorage.removeItem('vixen_po_prihlaseni'); } catch {}
+  const l = [...S.nabidky].sort((a, b) => (aktivni(b) - aktivni(a)) || (a.akce.datum < b.akce.datum ? -1 : 1) * (aktivni(a) ? 1 : -1));
+  $app.innerHTML = `<h1>Nabídky akcí</h1>${hlaska}
+   ${l.length ? l.map(kartaNabidky).join('') : '<div class="card"><p>Zatím pro vás nemáme žádnou nabídku. Jakmile bude akce ve vašem městě, uvidíte ji tady.</p><p class="mute">Tip: přidejte si Vixen na plochu telefonu, ať vám nic neuteče.</p></div>'}`;
+  $app.querySelectorAll('.nab-karta-a').forEach((el) => {
+    const n = S.nabidky.find((x) => x.id === el.dataset.id);
+    el.querySelectorAll('button[data-o]').forEach((b) => (b.onclick = async () => {
+      if (b.dataset.potvrd && !el.querySelector('.nab-potvrd')) {
+        b.insertAdjacentHTML('afterend', `<div class="nab-potvrd">${msg(b.dataset.potvrd, 'warn')}<button class="btn" data-ano>Ano, nemůžu</button> <button class="btn o" data-ne>Zpět</button></div>`);
+        el.querySelector('[data-ne]').onclick = () => el.querySelector('.nab-potvrd').remove();
+        el.querySelector('[data-ano]').onclick = () => odpovez(n, b.dataset.o);
+        return;
+      }
+      odpovez(n, b.dataset.o);
+    }));
+    const kr = el.querySelector('[data-krok]'); if (kr) kr.onclick = () => ukaz(kr.dataset.krok);
+    const img = el.querySelector('img[data-cesta]');
+    if (img) sb.storage.from('akce').createSignedUrl(img.dataset.cesta, 3600).then(({ data: u }) => { if (u?.signedUrl) img.src = u.signedUrl; else img.remove(); });
+  });
+}
+async function odpovez(n, odpoved) {
+  const { error } = await sb.rpc('nabidka_odpovez', { p_nabidka: n.id, p_odpoved: odpoved });
+  if (error) return vNabidky(msg(esc(chybaText(error)), 'bad'));
+  vNabidky(msg(odpoved === 'zajem' ? 'Děkujeme, máte zájem ✓ Kancelář vám účast potvrdí v aplikaci.' : 'Děkujeme za odpověď. Příště se třeba potkáme.'));
+}
+function kartaNabidky(n) {
+  const a = n.akce, po = n.rozhodnuti === 'potvrzeno', zav = a.uzaverka && new Date(a.uzaverka) < new Date();
+  let stav;
+  if (a.stav === 'zrusena') stav = msg('Akce byla zrušena' + (a.zruseni_duvod ? ': ' + esc(a.zruseni_duvod) : '.'), 'bad');
+  else if (a.datum < dnesIso()) stav = `<p class="mute">Akce proběhla.${po ? ' Děkujeme!' : ''}</p>`;
+  else if (po) { const sk = smlouvaKrok();
+    stav = `<div class="nab-stav ok"><b>Účast je potvrzená ✓</b>
+      <ul class="nab-kontakty">${kontakt(a.kontakt_vixen, 'za Vixen')}${(a.kontakty_klient || []).map((x) => kontakt(x, ROLE_K[x.role] || '')).join('')}</ul></div>
+      ${!sk.hotovo && sk.v && sk.kdo === 'vy' ? `<div class="ted"><b>Před akcí: smlouva</b>${esc(sk.popis)}<button class="btn" data-krok="${sk.v}">${esc(sk.tlac || 'Pokračovat')} →</button></div>` : ''}
+      <button class="btn o mini" data-o="nemuze" data-potvrd="Opravdu se z akce odhlásit? Kancelář místo obsadí někým jiným – prosím zavolejte jí také.">Nemůžu přijet (odhlásit se)</button>`; }
+  else if (n.rozhodnuti === 'odmitnuto') stav = '<p class="nab-stav">Tentokrát je obsazeno. Děkujeme za zájem – ozveme se s další nabídkou.</p>';
+  else if (n.odpoved === 'zajem') stav = `<div class="nab-stav wa"><b>Máte zájem ✓</b>Kancelář vám účast potvrdí – uvidíte to tady.</div><button class="btn o mini" data-o="nemuze">Nakonec nemůžu</button>`;
+  else if (n.odpoved === 'nemuze') stav = `<p class="nab-stav">Odpověděli jste: nemůžu.</p>${zav ? '' : '<button class="btn o mini" data-o="zajem">Přece jen mám zájem</button>'}`;
+  else stav = zav ? '<p class="nab-stav">Uzávěrka přihlášek minula. Pokud můžete, zavolejte do kanceláře.</p>'
+    : `<div class="nab-tl"><button class="btn" data-o="zajem">Mám zájem</button><button class="btn o" data-o="nemuze">Nemůžu</button></div>`;
+  return `<article class="card nab-karta-a${aktivni(n) ? '' : ' nab-stara'}" data-id="${n.id}">
+    <div class="nab-hl"><h2>${esc(a.nazev)}</h2>${noveNabidky().includes(n) ? '<span class="tag t-w">nová</span>' : ''}</div>
+    ${a.klient ? `<p class="mute">${esc(a.klient)}</p>` : ''}
+    <dl class="nab-dl"><dt>Kdy</dt><dd><b>${denAkce(a.datum)}</b>, sraz v ${cas(a.sraz_cas)}${a.sraz_misto ? ' – ' + esc(a.sraz_misto) : ''}${a.prace_od ? `<br>práce ${cas(a.prace_od)}–${cas(a.prace_do)}` : ''}</dd>
+     <dt>Kde</dt><dd>${esc(a.mesto)} – ${esc(a.adresa)}<br><small>${mapaOdkaz(a.adresa)}</small></dd>
+     <dt>Oblečení</dt><dd>${a.obleceni === 'vlastni' ? 'vlastní' : 'dodá klient'}${a.obleceni_popis ? ' – ' + esc(a.obleceni_popis) : ''}${a.obleceni_foto ? `<br><img class="nab-foto" alt="Jak má oblečení vypadat" data-cesta="${esc(a.obleceni_foto)}">` : ''}</dd>
+     ${a.odmena ? `<dt>Odměna</dt><dd>${esc(a.odmena)}</dd>` : ''}
+     ${a.uzaverka && aktivni(n) && !n.rozhodnuti && !zav ? `<dt>Odpovězte do</dt><dd>${kdyKratce(a.uzaverka)}</dd>` : ''}
+     ${a.poznamka ? `<dt>Poznámka</dt><dd>${esc(a.poznamka)}</dd>` : ''}</dl>
+    ${stav}</article>`;
+}
+// otevřený osobní odkaz bez přihlášení: krátce co to je, přihlášení, rada přidat na plochu
+function vOdkazNabidky() {
+  const a = S.odkaz;
+  $app.innerHTML = `<h1>Nabídka akce od Vixen</h1>
+   ${a ? `<div class="card"><h2 style="margin-top:0">${esc(a.nazev)}</h2><p><b>${denAkce(a.datum)}</b> · ${esc(a.mesto)}</p>${a.stav === 'zrusena' ? msg('Tato akce byla zrušena.', 'bad') : ''}</div>`
+       : msg('Odkaz už neplatí. Po přihlášení uvidíte všechny své nabídky.', 'warn')}
+   <p>Podrobnosti (čas, místo, oblečení, odměna) a přihlášení na akci najdete v aplikaci. Přihlaste se e-mailem z registrace – žádné heslo není potřeba.</p>
+   <button class="btn" id="o-prihlasit">Přihlásit se a odpovědět →</button>
+   <div class="ted kancelar" style="margin-top:18px"><b>Tip: Vixen na ploše telefonu</b>Nabídky posíláme hlavně do aplikace. S ikonou na ploše je otevřete jedním klepnutím a nic vám neuteče.<button class="btn o" id="o-plocha">Jak přidat na plochu</button></div>`;
+  document.getElementById('o-prihlasit').onclick = () => vPrihlaseni();
+  document.getElementById('o-plocha').onclick = () => vInstalace();
+}
 
 // ---------- fotky v profilu (soukromé úložiště, zmenšené v telefonu před nahráním) ----------
 const MAX_FOTEK = 3;

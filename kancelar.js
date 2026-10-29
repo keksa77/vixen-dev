@@ -217,7 +217,7 @@ async function menu(aktivni) {
   return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
-  $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, akce: vAkce, nastaveni: vNastaveni, dotazy: vUvod })[b.dataset.v]()));
+  $app.querySelectorAll('.knav button:not([disabled])').forEach((b) => (b.onclick = () => (S.proAkci = null) || ({ nastenka: vNastenka, prihlasky: vPrihlasky, lide: vLide, akce: vAkce, nastaveni: vNastaveni, dotazy: vUvod })[b.dataset.v]()));
   horniPosuvniky();
 }
 
@@ -241,6 +241,7 @@ async function vNastenka() {
   $app.innerHTML = `${await menu('nastenka')}<p class="mute">Načítám…</p>`; zapniMenu();
   try { await Promise.all([nactiLidi(), nactiAkce().catch(() => (S.akce = S.akce || []))]); } catch (e) { $app.innerHTML = (await menu('nastenka')) + msg(esc(chyba(e)), 'bad'); zapniMenu(); return; }
   const tym = S.lide.filter((o) => ['prijata', 'aktivni'].includes(o.stav));
+  const volnaMista = S.akce.filter((a) => a.stav !== 'zrusena' && a.datum >= dnesIso()).reduce((s, a) => s + Math.max(0, a.pocet_lidi - obsazeni(a).potvrzeno), 0);
   const tyden = S.akce.filter((a) => a.stav !== 'zrusena' && a.datum >= dnesIso() && a.datum <= posunDen(dnesIso(), 7));
   const dlazdice = [
     ['y', S.lide.filter((o) => o.stav === 'uchazec').length, 'nových registrací', () => vPrihlasky()],
@@ -253,10 +254,11 @@ async function vNastenka() {
   ];
   $app.innerHTML = `${await menu('nastenka')}<h1>Dnes je potřeba</h1><p class="mute">Počítá se z přijatých a aktivních lidí (${tym.length}). Kliknutím na dlaždici otevřete seznam.</p>
    <div class="tiles">${dlazdice.map(([c, n, t], i) => `<button class="tile ${n ? c : 'g'}" data-i="${i}"><div class="n">${n}</div>${t}</button>`).join('')}
-    <div class="tile seda"><div class="n">–</div>nepřihlášeno ČSSZ<small>připravujeme</small></div><div class="tile seda"><div class="n">–</div>neobsazená místa na akcích<small>připravujeme</small></div></div>
-   <h2>Akce v příštích 7 dnech</h2>${tyden.length ? `<div class="ak-tyden">${tyden.map((a) => `<button class="ak-den" data-id="${a.id}"><b>${denAkce(a.datum)} · ${cas(a.sraz_cas)}</b>${esc(a.nazev)}<small>${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · ${a.pocet_lidi} lidí${a.klient ? ' · ' + esc(a.klient.nazev) : ''}</small></button>`).join('')}</div>` : '<p class="mute">Žádná akce. Novou založíte v menu Akce.</p>'}<p class="mute">Obsazení a smlouvy u každé akce přibudou s nabídkami (etapa B).</p>`;
+    <div class="tile seda"><div class="n">–</div>nepřihlášeno ČSSZ<small>připravujeme</small></div><button class="tile ${volnaMista ? 'r' : 'g'}" id="t-volna"><div class="n">${volnaMista}</div>neobsazená místa na akcích<small>nadcházející akce</small></button></div>
+   <h2>Akce v příštích 7 dnech</h2>${tyden.length ? `<div class="ak-tyden">${tyden.map((a) => `<button class="ak-den" data-id="${a.id}"><b>${denAkce(a.datum)} · ${cas(a.sraz_cas)}</b>${esc(a.nazev)}<small>${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · obsazeno ${obsazeni(a).potvrzeno}/${a.pocet_lidi}${a.klient ? ' · ' + esc(a.klient.nazev) : ''}</small></button>`).join('')}</div>` : '<p class="mute">Žádná akce. Novou založíte v menu Akce.</p>'}`;
   zapniMenu();
   $app.querySelectorAll('.tile[data-i]').forEach((t) => (t.onclick = () => dlazdice[t.dataset.i][3]()));
+  document.getElementById('t-volna').onclick = () => { AK.filtr = 'nadchazejici'; vAkce(); };
   $app.querySelectorAll('.ak-den').forEach((b) => (b.onclick = () => vAkceForm(S.akce.find((a) => a.id === b.dataset.id))));
 }
 function lideFiltr(f) { F = { ...F0(), ...f }; ulozF(); STRANA = 0; vLide(); }
@@ -555,7 +557,7 @@ async function vLide(hlaska = '') {
   const th = (k, t) => (k ? `<th data-k="${k}" class="raz">${t}<i></i></th>` : `<th>${t}</th>`);
   $app.innerHTML = `${await menu('lide')}
    <div class="lide-hlava"><h1>Lidé</h1><span id="pocet" class="mute"></span><span id="shrnuti" class="shrnuti"></span><button class="btn o mini" id="vymazat">Vymazat filtry</button>
-    <span class="pozn">Filtry jsou v řádku pod názvy sloupců. Najetím na fotku se zvětší, kliknutím na řádek otevřete detail.</span></div>${hlaska}
+    <span class="pozn">Filtry jsou v řádku pod názvy sloupců. Najetím na fotku se zvětší, kliknutím na řádek otevřete detail.</span></div>${vyberProAkciHtml()}${hlaska}
    <div id="hromadne" class="hromadne hidden"></div>
    <div class="tab-obal"><table class="lide-tab"><thead>
     <tr><th class="vyb-sl"><input type="checkbox" id="vse" title="Vybrat vše podle filtru"></th>${th('foto', 'Foto')}${th('jmeno', 'Jméno')}${th('stav', 'Stav')}${th('', 'Telefon')}${th('', 'Kraje')}${th('', 'Zájem')}${th('vyska', 'Výška')}${th('', 'Jazyky')}${th('vek', 'Věk')}${th('profil', 'Profil')}${th('udaje', 'Údaje')}${th('dpp', 'DPP')}${th('', 'ČSSZ')}${th('reg', 'Registrace')}</tr>
@@ -580,6 +582,8 @@ async function vLide(hlaska = '') {
    <div id="detail" class="detail hidden"></div>`;
   zapniMenu();
   document.getElementById('vymazat').onclick = () => { F = F0(); ulozF(); vLide(); };
+  const zpetAk = document.getElementById('ak-vyber-zpet');
+  if (zpetAk) zpetAk.onclick = () => { const a = S.proAkci; S.proAkci = null; S.vyber.clear(); vAkceForm(S.akce.find((x) => x.id === a.id)); };
   $app.querySelectorAll('thead th.raz').forEach((t) => (t.onclick = () => { RAZENI = { k: t.dataset.k, smer: RAZENI.k === t.dataset.k ? -RAZENI.smer : 1 }; vykresliTabulku(); }));
   $app.querySelectorAll('thead [data-f]').forEach((el) => (el.oninput = el.onchange = () => {
     const k = el.dataset.f;
@@ -612,7 +616,7 @@ function vykresliTabulku() {
     return `<tr data-id="${o.id}"${S.vyber.has(o.id) ? ' class="vybran"' : ''}>
      <td><input type="checkbox" class="vyb" ${S.vyber.has(o.id) ? 'checked' : ''}></td>
      <td>${nahled(o)}</td>
-     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}<small>${esc(o.obec || '')}</small></td>
+     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}<small>${esc(o.obec || '')}</small></td>
      <td><span class="tag ${STAV_O[o.stav][1]}"${o.duvod ? ` title="Důvod: ${esc(DUVOD[o.duvod] || o.duvod)}"` : ''}>${STAV_O[o.stav][0]}</span>${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>
      <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a><small>${esc((o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '))}</small></td>
      <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}<small>${o.okresy.length} měst</small></td>
@@ -653,6 +657,7 @@ function hromadne() {
   const oslovit = osoby.filter((o) => !o.neoslovovat), bez = osoby.length - oslovit.length, bezText = bez ? ` (vynecháno ${bez} – neoslovovat)` : '';
   el.classList.remove('hidden');
   el.innerHTML = `<b>Vybráno ${ids.length}</b>
+    ${S.proAkci ? '<button class="btn mini" data-h="nabidka">Poslat nabídku na akci</button>' : ''}
     <button class="btn o mini" data-h="email">Kopírovat e-maily</button><button class="btn o mini" data-h="tel">Kopírovat telefony</button>
     <button class="btn o mini" data-h="pripom">Poslat připomínku e-mailem</button>
     <button class="btn o mini" data-h="wa">Připravit WhatsApp upozornění</button>
@@ -673,6 +678,7 @@ function hromadne() {
       el.querySelector('.potvrd-h').remove(); info(r.text.replace(/<[^>]+>/g, '')); };
   };
   el.querySelector('[data-h=csv]').onclick = () => { exportCsv(osoby); info('Soubor stažen.'); };
+  if (S.proAkci) el.querySelector('[data-h=nabidka]').onclick = () => poslatNabidku(el, osoby, info);
   el.querySelector('[data-h=wa]').onclick = () => whatsappPanel(el, osoby);
   el.querySelector('[data-h=vyzva]').onclick = () => {
     el.querySelector('.potvrd-h')?.remove();
@@ -723,26 +729,26 @@ function vyzvaHtml(o) {
 
 // ---------- WhatsApp upozornění: aplikace připraví text pro každého, kancelář odešle ručně ze svého WhatsAppu ----------
 const WA_TEXT = 'Dobrý den, {oslovení}, máme pro vás novou nabídku od Vixen. Podrobnosti najdete v aplikaci: {odkaz}\nOdpovídejte prosím v aplikaci. Děkujeme, Vixen';
-function whatsappPanel(el, osoby) {
+function whatsappPanel(el, osoby, opt = {}) {
   el.querySelector('.potvrd-h')?.remove();
   const s = osoby.filter((o) => o.whatsapp_souhlas_at && !o.neoslovovat), bez = osoby.filter((o) => !o.whatsapp_souhlas_at).length, neosl = osoby.filter((o) => o.whatsapp_souhlas_at && o.neoslovovat).length;
-  const odkaz = new URL('./', location.href).href;
+  const odkaz = opt.odkaz || (() => new URL('./', location.href).href);
   el.insertAdjacentHTML('beforeend', `<div class="potvrd-h wa-panel"><b>WhatsApp upozornění</b> – ${s.length} lidí se souhlasem${bez ? ` · vynecháno ${bez} bez souhlasu` : ''}${neosl ? ` · ${neosl} neoslovovat` : ''}
     <p class="pozn">Text se doplní pro každého. {oslovení} = jméno v 5. pádě, {odkaz} = odkaz do aplikace. Zprávy odesílejte z firemního WhatsAppu (WhatsApp Business) – po kliknutí se otevře chat s vloženým textem, stačí Enter. Hromadné automatické rozesílání WhatsApp nedovoluje.</p>
-    <textarea id="wa-text" rows="3">${esc(WA_TEXT)}</textarea>
+    <textarea id="wa-text" rows="3">${esc(opt.text || WA_TEXT)}</textarea>
     <div class="akce"><button class="btn mini" data-wa-pripravit>Připravit zprávy</button> <button class="btn o mini" data-wa-zavrit>Zavřít</button></div><div id="wa-seznam"></div></div>`);
   const panel = el.querySelector('.wa-panel');
   panel.querySelector('[data-wa-zavrit]').onclick = () => panel.remove();
   panel.querySelector('[data-wa-pripravit]').onclick = () => {
     const vzor = panel.querySelector('#wa-text').value;
-    const text = (o) => vzor.split('{oslovení}').join(K.vokativ(o.jmeno)).split('{odkaz}').join(odkaz);
+    const text = (o) => vzor.split('{oslovení}').join(K.vokativ(o.jmeno)).split('{odkaz}').join(odkaz(o));
     const box = panel.querySelector('#wa-seznam');
     box.innerHTML = s.length ? `<table class="wa-tab">${s.map((o) => `<tr data-id="${o.id}"><td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b><br><span class="mute">${esc(o.telefon)}</span></td>
       <td class="wa-txt">${esc(text(o))}</td><td class="wa-tl"><a class="btn mini" target="_blank" rel="noopener" href="https://wa.me/${o.telefon.replace(/\D/g, '')}?text=${encodeURIComponent(text(o))}">Otevřít ve WhatsAppu</a>
       <button class="btn o mini" data-kop>Kopírovat text</button><span class="wa-stav mute"></span></td></tr>`).join('')}</table>` : '<p class="mute">Nikdo z vybraných nedal souhlas se zprávami přes WhatsApp.</p>';
     box.querySelectorAll('tr').forEach((tr) => {
       const o = s.find((x) => x.id === tr.dataset.id), t = text(o), stav = tr.querySelector('.wa-stav');
-      const zapis = async () => { const { error } = await sb.rpc('kancelar_whatsapp_zapis', { p_osoba: o.id, p_text: t });
+      const zapis = async () => { const { error } = opt.zapis ? await opt.zapis(o, t) : await sb.rpc('kancelar_whatsapp_zapis', { p_osoba: o.id, p_text: t });
         stav.textContent = error ? 'nepodařilo se zapsat: ' + chyba(error) : 'odesláno ' + new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) + ' ✓';
         if (!error) tr.classList.add('wa-hotovo'); };
       tr.querySelector('a').addEventListener('click', zapis);
@@ -769,6 +775,8 @@ async function nactiAkce() {
   await ciselniky();
   const [a, k] = await Promise.all([sb.from('akce').select('*, klient(*)').order('datum').order('sraz_cas'), sb.from('klient').select('*').order('nazev')]);
   if (a.error) throw a.error; if (k.error) throw k.error;
+  const n = await sb.from('akce_nabidka').select('*');
+  S.nabidky = n.error ? [] : n.data || [];
   S.akce = (a.data || []).map((x) => { const klient = Array.isArray(x.klient) ? x.klient[0] || null : x.klient;
     return { ...x, klient, hledej: bezDiakritiky([x.nazev, x.adresa, klient?.nazev, S.cis.okres[x.okres_kod]?.mesto].join(' ')) }; });
   S.klienti = k.data || [];
@@ -781,7 +789,7 @@ async function vAkce(hlaska = '') {
   $app.innerHTML = `${await menu('akce')}<div class="reg-hlava"><h1>Akce</h1>
     <div class="reg-taby">${Object.entries(AK_FILTR).map(([f, t]) => `<button data-f="${f}"${AK.filtr === f ? ' class="on"' : ''}>${t}<b>${pocty[f]}</b></button>`).join('')}</div>
     <input type="search" id="ak-hledat" placeholder="Hledat akci, klienta, město…" value="${esc(AK.hledat)}"><button class="btn mini" id="ak-nova">+ Nová akce</button></div>
-   ${hlaska}<div class="tab-obal"><table class="lide-tab ak-tab"><thead><tr><th>Datum</th><th>Sraz</th><th>Akce</th><th>Klient</th><th>Město</th><th>Lidí</th><th>Uzávěrka</th></tr></thead><tbody id="ak-telo"></tbody></table></div>`;
+   ${hlaska}<div class="tab-obal"><table class="lide-tab ak-tab"><thead><tr><th>Datum</th><th>Sraz</th><th>Akce</th><th>Klient</th><th>Město</th><th>Obsazeno</th><th>Uzávěrka</th></tr></thead><tbody id="ak-telo"></tbody></table></div>`;
   zapniMenu();
   const vykresli = () => {
     const h = bezDiakritiky(AK.hledat.trim());
@@ -790,7 +798,7 @@ async function vAkce(hlaska = '') {
     document.getElementById('ak-telo').innerHTML = l.length ? l.map((a) => `<tr data-id="${a.id}"${a.datum === dnesIso() ? ' class="ak-dnes"' : ''}>
       <td class="nw"><b>${denAkce(a.datum)}</b>${a.datum === dnesIso() ? '<small>dnes</small>' : ''}</td><td class="nw">${cas(a.sraz_cas)}${a.prace_od ? `<small>práce ${cas(a.prace_od)}–${cas(a.prace_do)}</small>` : ''}</td>
       <td><b>${esc(a.nazev)}</b>${a.stav === 'zrusena' ? ' <span class="tag t-r">zrušená</span>' : ''}<small>${esc(a.adresa)}</small></td>
-      <td>${esc(a.klient?.nazev || '–')}</td><td>${esc(S.cis.okres[a.okres_kod]?.mesto || a.okres_kod)}</td><td>${a.pocet_lidi}</td>
+      <td>${esc(a.klient?.nazev || '–')}</td><td>${esc(S.cis.okres[a.okres_kod]?.mesto || a.okres_kod)}</td><td class="nw">${obsazeniZn(a)}</td>
       <td class="nw">${a.uzaverka ? kdy(a.uzaverka) : '–'}</td></tr>`).join('')
       : `<tr><td colspan="7" class="prazdno">${h ? 'Hledání nic nenašlo.' : AK.filtr === 'nadchazejici' ? 'Žádná nadcházející akce. Založte ji tlačítkem „+ Nová akce“.' : 'Nic tu není.'}</td></tr>`;
     document.querySelectorAll('#ak-telo tr[data-id]').forEach((r) => (r.onclick = () => vAkceForm(S.akce.find((a) => a.id === r.dataset.id))));
@@ -824,6 +832,7 @@ async function vAkceForm(a, hlaska = '') {
   $app.innerHTML = `${await menu('akce')}<div class="ak-hlava"><button class="btn o mini" id="ak-zpet">← Akce</button>
     <h1>${nova ? 'Nová akce' : esc(a.nazev)}</h1>${zrusena ? '<span class="tag t-r">zrušená</span>' : probehla ? '<span class="tag t-b">proběhla</span>' : ''}</div>
    ${zrusena ? msg('Akce je zrušená: ' + esc(a.zruseni_duvod || ''), 'bad') : ''}${hlaska}
+   ${nova || zrusena ? '' : '<div id="ak-obs"></div>'}
    <form id="ak-f" class="ak-form" novalidate>
     <section class="card"><h2>Akce</h2>
      ${pole('nazev', 'Název akce', a.nazev, 'text', ' placeholder="např. Ochutnávka kávy v obchodním centru"')}
@@ -867,6 +876,7 @@ async function vAkceForm(a, hlaska = '') {
      <button class="btn o mini" id="ak-kop1">Kopírovat na další den</button><button class="btn o mini" id="ak-kopx">Kopírovat na jiné datum…</button>
      ${zrusena ? '<button class="btn o mini" id="ak-obnov">Obnovit akci</button>' : '<button class="btn o mini" id="ak-zrus">Zrušit akci…</button>'}</div><div id="ak-krok"></div></section>`}`;
   zapniMenu();
+  if (!nova && !zrusena) obsazeniSekce(a, probehla);
   const f = document.getElementById('ak-f'), h = (id) => (document.getElementById('a-' + id)?.value || '').trim();
   document.getElementById('ak-zpet').onclick = () => vAkce();
   document.getElementById('a-adresa').oninput = (e) => (document.getElementById('a-mapa').innerHTML = mapa(e.target.value.trim()));
@@ -981,6 +991,85 @@ async function vAkceForm(a, hlaska = '') {
     const { error } = await sb.from('akce').update({ stav: 'priprava', zruseni_duvod: null }).eq('id', a.id);
     if (error) return (krok.innerHTML = msg(esc(chyba(error)), 'bad'));
     await nactiAkce(); vAkceForm(S.akce.find((x) => x.id === a.id), msg('Akce obnovená ✓'));
+  };
+}
+
+// ---------- NABÍDKA A OBSAZENÍ (modul 2, etapa B) ----------
+// odpoved = hosteska (zájem / nemůže), rozhodnuti = kancelář (potvrzeno / tentokrát ne). Potvrzení zároveň odemkne smlouvu.
+const NAB_STAV = { potvrzeno: ['potvrzeno', 't-ok'], zajem: ['má zájem', 't-w'], ceka: ['bez odpovědi', 't-g'], nemuze: ['nemůže', 't-b'], odmitnuto: ['tentokrát ne', 't-b'] };
+const nabStav = (n) => n.rozhodnuti || n.odpoved || 'ceka';
+const nabidkyAkce = (a) => (S.nabidky || []).filter((n) => n.akce_id === a.id);
+function obsazeni(a) {
+  const l = nabidkyAkce(a), c = (s) => l.filter((n) => nabStav(n) === s).length;
+  return { potvrzeno: c('potvrzeno'), zajem: c('zajem'), nemuze: c('nemuze'), odmitnuto: c('odmitnuto'), ceka: c('ceka'), neotevreno: l.filter((n) => nabStav(n) === 'ceka' && !n.otevreno).length, celkem: l.length };
+}
+const obsazeniZn = (a) => { const o = obsazeni(a); if (!o.celkem) return '<span class="mute">nenabídnuto</span>';
+  return `<b class="${o.potvrzeno >= a.pocet_lidi ? 'ok' : 'no'}">${o.potvrzeno}/${a.pocet_lidi}</b><small>zájem ${o.zajem} · bez odp. ${o.ceka}</small>`; };
+const WA_NABIDKA = (a) => `Dobrý den, {oslovení}, máme pro vás novou akci: ${a.nazev}, ${denAkce(a.datum)}, ${S.cis.okres[a.okres_kod]?.mesto || ''}. Podrobnosti a přihlášení najdete v aplikaci: {odkaz}\nOdpovídejte prosím v aplikaci. Děkujeme, Vixen`;
+
+async function obsazeniSekce(a, probehla, hlaska = '') {
+  const box = document.getElementById('ak-obs'); if (!box) return;
+  if (!S.lide.length) { box.innerHTML = '<section class="card"><p class="mute">Načítám obsazení…</p></section>'; try { await nactiLidi(); } catch (e) { box.innerHTML = msg(esc(chyba(e)), 'bad'); return; } }
+  const o = obsazeni(a), PORADI = ['zajem', 'potvrzeno', 'ceka', 'nemuze', 'odmitnuto'];
+  const l = nabidkyAkce(a).map((n) => ({ n, o: S.lide.find((x) => x.id === n.osoba_id) })).filter((x) => x.o)
+    .sort((x, y) => PORADI.indexOf(nabStav(x.n)) - PORADI.indexOf(nabStav(y.n)) || x.o.prijmeni.localeCompare(y.o.prijmeni, 'cs'));
+  const proWa = l.filter(({ n, o: x }) => nabStav(n) === 'ceka' && !n.otevreno && x.whatsapp_souhlas_at && !x.neoslovovat);
+  const otevr = (n) => n.otevreno ? 'v aplikaci ' + kdy(n.otevreno) : n.odkaz_otevren ? 'odkaz ' + kdy(n.odkaz_otevren) + ', zatím nepřihlášen/a' : '<span class="no">neotevřel/a</span>';
+  box.innerHTML = `<section class="card ak-obs"><h2>Nabídka a obsazení</h2>${hlaska}
+    <div class="ak-souhrn"><span class="ak-cislo ${o.potvrzeno >= a.pocet_lidi ? 'ok' : ''}"><b>${o.potvrzeno}/${a.pocet_lidi}</b> potvrzeno</span>
+     <span>má zájem <b>${o.zajem}</b></span><span>bez odpovědi <b>${o.ceka}</b> (neotevřelo ${o.neotevreno})</span><span>nemůže <b>${o.nemuze}</b></span><span>nabídnuto <b>${o.celkem}</b></span></div>
+    ${o.potvrzeno > a.pocet_lidi ? msg(`Potvrzeno je víc lidí (${o.potvrzeno}), než je potřeba (${a.pocet_lidi}).`, 'warn') : ''}
+    <div class="akce"><button class="btn mini" id="ak-vybrat"${probehla ? ' disabled title="Akce už proběhla"' : ''}>Vybrat lidi a poslat nabídku</button>
+     <button class="btn o mini" id="ak-wa"${proWa.length ? '' : ' disabled'}>WhatsApp – kdo nabídku neotevřel (${proWa.length})</button></div>
+    <div id="ak-wa-box"></div>
+    ${l.length ? `<p class="pozn">Potvrzením člověku zároveň odemknete údaje a smlouvu v aplikaci (pokud je ještě nemá). Kontakty a podrobnosti uvidí až po potvrzení.</p>
+    <div class="tab-obal"><table class="lide-tab ak-nab"><thead><tr><th>Foto</th><th>Jméno</th><th>Stav</th><th>Nabídku viděl/a</th><th>Smlouva</th><th></th></tr></thead><tbody>${l.map(({ n, o: x }) => { const s = nabStav(n);
+      return `<tr data-n="${n.id}"><td>${nahled(x)}</td><td><b>${esc(x.prijmeni)} ${esc(x.jmeno)}</b><small><a class="tel" href="tel:${esc(x.telefon)}">${esc(x.telefon)}</a></small></td>
+       <td><span class="tag ${NAB_STAV[s][1]}">${NAB_STAV[s][0]}</span>${n.odhlaseno_at && !n.rozhodnuti ? '<small class="no">odhlásil/a se po potvrzení</small>' : ''}</td>
+       <td class="nw">${otevr(n)}${n.whatsapp_at ? `<small>WhatsApp ${kdy(n.whatsapp_at)}</small>` : ''}</td>
+       <td>${x.dpp ? esc(DPP_TXT[x.dpp] || x.dpp) : x.smlouva_vyzva_at ? '<span class="mute">vyzván/a, zatím bez smlouvy</span>' : '<span class="mute">–</span>'}</td>
+       <td class="nw">${s !== 'potvrzeno' && !probehla ? '<button class="btn mini" data-r="potvrzeno">Potvrdit</button> ' : ''}${s !== 'odmitnuto' && s !== 'nemuze' && !probehla ? '<button class="btn o mini" data-r="odmitnuto">Tentokrát ne</button> ' : ''}${n.rozhodnuti && !probehla ? '<button class="btn o mini" data-r="">Vrátit</button>' : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+    : '<p class="mute">Nabídku zatím nikdo nedostal. Klikněte na „Vybrat lidi a poslat nabídku“ – filtr v Lidé se předvyplní podle města a požadavků akce.</p>'}</section>`;
+  podepisFotky(l.map(({ o: x }) => x.fotky[0]).filter(Boolean)).then(() => box.querySelectorAll('.foto[data-cesta] img').forEach((i) => (i.src = S.fotoUrl[i.parentElement.dataset.cesta] || '')));
+  document.getElementById('ak-vybrat').onclick = () => lideProAkci(a);
+  document.getElementById('ak-wa').onclick = () => whatsappPanel(document.getElementById('ak-wa-box'), proWa.map(({ n, o: x }) => ({ ...x, _nab: n })), {
+    text: WA_NABIDKA(a), odkaz: (x) => new URL('./', location.href).href + '#n=' + x._nab.token,
+    zapis: (x, t) => sb.rpc('kancelar_nabidka_whatsapp', { p_nabidka: x._nab.id, p_text: t }) });
+  box.querySelectorAll('button[data-r]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    const { error } = await sb.rpc('kancelar_nabidka_rozhodni', { p_nabidky: [b.closest('tr').dataset.n], p_rozhodnuti: b.dataset.r || null });
+    if (error) { b.disabled = false; return box.querySelector('.ak-souhrn').insertAdjacentHTML('afterend', msg(esc(chyba(error)), 'bad')); }
+    await nactiAkce(); if (b.dataset.r === 'potvrzeno') await nactiLidi();
+    obsazeniSekce(S.akce.find((x) => x.id === a.id), probehla, msg(b.dataset.r === 'potvrzeno' ? 'Potvrzeno ✓ Hosteska to uvidí v aplikaci.' : 'Uloženo ✓'));
+  }));
+}
+
+// výběr lidí pro akci: Lidé s filtrem podle města a požadavků akce
+function lideProAkci(a) {
+  const p = a.pozadavky || {};
+  S.proAkci = a; S.vyber.clear();
+  F = { ...F0(), okres: a.okres_kod, vyskaOd: p.vyska_od ? String(p.vyska_od) : '', jazyk: p.jazyk || '', ridicak: !!p.ridicak, auto: !!p.auto };
+  ulozF(); STRANA = 0; vLide();
+}
+function vyberProAkciHtml() {
+  const a = S.proAkci; if (!a) return '';
+  const uz = nabidkyAkce(a).length;
+  return `<div class="ak-vyber"><div><b>Výběr lidí pro akci: ${esc(a.nazev)}</b> · ${denAkce(a.datum)} · ${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · potřeba ${a.pocet_lidi}<br>
+    <span class="pozn">Filtr je předvyplněný podle města a požadavků akce – upravit ho můžete. Zaškrtněte lidi a klikněte „Poslat nabídku na akci“.${uz ? ` Nabídku už má ${uz} lidí (štítek „nabídnuto“).` : ''}</span></div>
+    <button class="btn o mini" id="ak-vyber-zpet">← Zpět na akci</button></div>`;
+}
+function poslatNabidku(el, osoby, info) {
+  const a = S.proAkci;
+  el.querySelector('.potvrd-h')?.remove();
+  el.insertAdjacentHTML('beforeend', `<div class="potvrd-h">${msg(`Poslat nabídku akce „${esc(a.nazev)}“ (${denAkce(a.datum)}) ${osoby.length} lidem? Uvidí ji v aplikaci a odpoví „Mám zájem“ / „Nemůžu“. Kdo nabídku už má, je neoslovovat nebo není přijatý, toho aplikace vynechá.`, 'warn')}
+    <button class="btn mini" data-ok>Ano, poslat</button> <button class="btn o mini" data-ne>Ne</button></div>`);
+  el.querySelector('[data-ne]').onclick = () => el.querySelector('.potvrd-h').remove();
+  el.querySelector('[data-ok]').onclick = async (e) => {
+    e.target.disabled = true;
+    const { data, error } = await sb.rpc('kancelar_nabidka_posli', { p_akce: a.id, p_osoby: osoby.map((o) => o.id) });
+    if (error) { e.target.disabled = false; return info(chyba(error)); }
+    S.proAkci = null; S.vyber.clear(); await nactiAkce();
+    vAkceForm(S.akce.find((x) => x.id === a.id), msg(`Nabídka odeslána do aplikace ${data.nove} lidem.${data.uz_meli ? ` ${data.uz_meli} ji už měli.` : ''}${data.vynechano ? ` Vynecháno ${data.vynechano} (neoslovovat / nepřijatí).` : ''} Komu ji v aplikaci neotevřou, můžete poslat WhatsApp.`));
   };
 }
 

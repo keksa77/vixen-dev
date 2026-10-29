@@ -33,9 +33,10 @@ stavy.forEach((stav, i) => {
   const vytv = new Date(TED - (stav === 'uchazec' ? nah(12 * 24) * 3600000 : (20 + nah(680)) * DEN));
   db.osoba.push({ id, auth_user_id: null, jmeno: jm, prijmeni: pr, telefon: '+420' + (6 + nah(2)) + (1 + nah(9)) + String(nah(1e7)).padStart(7, '0'), email: `${ascii(jm)}.${ascii(pr)}.${i + 1}@example.cz`,
     kraj_kod: kraj, obec: m[0], zajem: muz ? ['promoter'] : nah(4) ? ['hosteska'] : ['hosteska', 'promoter'], kanal_kontaktu: vyber([['email', 'sms'], ['email', 'sms', 'whatsapp'], ['email', 'whatsapp'], ['sms', 'whatsapp'], ['email']]),
-    stav, souhlas_gdpr_v: '2026-dev', souhlas_gdpr_at: iso(vytv), vytvoreno: iso(vytv), zmeneno: iso(vytv) });
+    stav, whatsapp_souhlas_at: null, smlouva_vyzva_at: null, souhlas_gdpr_v: '2026-dev', souhlas_gdpr_at: iso(vytv), vytvoreno: iso(vytv), zmeneno: iso(vytv) });
   const ok = CIS.okres.filter((o) => (o.kraj_kod === kraj && (nah(10) < 6 || o.kod === m[2])) || (o.kraj_kod === (SOUSED[kraj] || 'praha') && nah(10) < 3)).map((o) => o.kod);
   db.okres[id] = ok.length ? ok : [m[2]];
+  { const o = db.osoba[db.osoba.length - 1]; if (o.kanal_kontaktu.includes('whatsapp')) o.whatsapp_souhlas_at = o.vytvoreno; }
   db.foto[id] = nah(100) < 82 ? Array.from({ length: 1 + nah(3) }, (_, k) => `demo/${id}-${k + 1}-${muz ? 'm' : 'z'}.jpg`) : [];
   if (stav === 'uchazec') return;
   if (nah(100) < 15) db.pozn[id] = vyber(POZN);
@@ -79,6 +80,17 @@ db.akce = [
   prace_od: od + ':00', prace_do: do_ + ':00', kontakt_vixen: { jmeno: 'Laďka', telefon: '+420601000111' }, kontakty_klient: klient_id ? KK('Kontakt klienta (vymyšlený)', '+420601000333') : [],
   obleceni, obleceni_popis: popis, obleceni_foto: null, pocet_lidi: pocet, odmena, pozadavky: id === 'ak4' ? { vyska_od: 168, jazyk: 'angličtina' } : {}, uzaverka: den > 1 ? new Date(TED + (den - 1) * DEN).toISOString() : null,
   poznamka: null, stav: id === 'ak8' ? 'zrusena' : 'priprava', zruseni_duvod: id === 'ak8' ? 'Klient stánek zrušil.' : null, zkopirovano_z: id === 'ak3' ? 'ak2' : null, vytvoreno: new Date(TED - 10 * DEN).toISOString(), zmeneno: new Date(TED - 10 * DEN).toISOString() }));
+const nabVyrob = (akceId, okres, stavy) => {
+  const lide = db.osoba.filter((o) => ['prijata', 'aktivni'].includes(o.stav) && db.okres[o.id].includes(okres)).slice(0, stavy.length);
+  lide.forEach((o, i) => { const s = stavy[i], t = new Date(TED - (3 - (i % 3)) * 3600000).toISOString();
+    db.nabidka.push({ id: 'nb-' + akceId + '-' + i, akce_id: akceId, osoba_id: o.id, token: 'demo-token-' + akceId + '-' + i, odeslano: new Date(TED - DEN).toISOString(),
+      otevreno: s === 'neot' ? null : t, odkaz_otevren: null, odpoved: s === 'zajem' || s === 'potvrzeno' ? 'zajem' : s === 'nemuze' ? 'nemuze' : null, odpoved_at: ['zajem', 'potvrzeno', 'nemuze'].includes(s) ? t : null,
+      rozhodnuti: s === 'potvrzeno' ? 'potvrzeno' : null, rozhodnuti_at: s === 'potvrzeno' ? t : null, odhlaseno_at: null, whatsapp_at: null });
+    if (s === 'potvrzeno') o.smlouva_vyzva_at = o.smlouva_vyzva_at || t; });
+};
+db.nabidka = [];
+nabVyrob('ak1', 'ceske-budejovice', ['potvrzeno', 'potvrzeno', 'potvrzeno', 'zajem', 'zajem', 'nemuze', 'ceka', 'neot']);
+nabVyrob('ak2', 'pisek', ['potvrzeno', 'zajem', 'zajem', 'neot', 'neot', 'neot']);
 db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro TBDB', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
 
 // ilustrační „fotky“ (vymyšlené postavy, žádné skutečné osoby) – SVG podle cesty
@@ -170,6 +182,23 @@ window.fetch = async (vstup, init = {}) => {
   }
   if (p.endsWith('/rest/v1/tiket_zprava')) { if (m === 'POST') { db.zprava.push({ ...body, id: 'z' + db.zprava.length, vytvoreno: new Date().toISOString() }); return odpoved(undefined, 201); } return odpoved(db.zprava.filter((z) => z.tiket_id === hodnota(q, 'tiket_id'))); }
   if (p.endsWith('/rest/v1/tiket_priloha')) return odpoved(m === 'POST' ? undefined : [], m === 'POST' ? 201 : 200);
+  if (p.endsWith('/rest/v1/akce_nabidka')) return odpoved(db.nabidka);
+  if (p.endsWith('/rpc/kancelar_nabidka_posli')) {
+    const a = db.akce.find((x) => x.id === body.p_akce), r = { nove: 0, uz_meli: 0, vynechano: 0 };
+    if (!a || a.stav === 'zrusena') return odpoved({ message: 'Akce je zrušená – nabídku nejde poslat.' }, 400);
+    body.p_osoby.forEach((id) => { const o = db.osoba.find((x) => x.id === id);
+      if (db.nabidka.some((n) => n.akce_id === a.id && n.osoba_id === id)) return r.uz_meli++;
+      if (!['prijata', 'aktivni'].includes(o.stav) || db.kanc[id]?.neoslovovat) return r.vynechano++;
+      r.nove++; db.nabidka.push({ id: 'nb-' + Date.now() + '-' + r.nove, akce_id: a.id, osoba_id: id, token: 'demo-token-' + Date.now() + r.nove, odeslano: new Date().toISOString(),
+        otevreno: null, odkaz_otevren: null, odpoved: null, odpoved_at: null, rozhodnuti: null, rozhodnuti_at: null, odhlaseno_at: null, whatsapp_at: null }); });
+    return odpoved(r);
+  }
+  if (p.endsWith('/rpc/kancelar_nabidka_rozhodni')) {
+    db.nabidka.filter((n) => body.p_nabidky.includes(n.id)).forEach((n) => { n.rozhodnuti = body.p_rozhodnuti; n.rozhodnuti_at = body.p_rozhodnuti ? new Date().toISOString() : null;
+      if (body.p_rozhodnuti === 'potvrzeno') { const o = db.osoba.find((x) => x.id === n.osoba_id); o.smlouva_vyzva_at = o.smlouva_vyzva_at || new Date().toISOString(); } });
+    return odpoved(body.p_nabidky.length);
+  }
+  if (p.endsWith('/rpc/kancelar_nabidka_whatsapp')) { const n = db.nabidka.find((x) => x.id === body.p_nabidka); n.whatsapp_at = new Date().toISOString(); return odpoved(null); }
   if (p.endsWith('/rest/v1/klient')) {
     if (m === 'POST') { if (body.ico && db.klient.some((x) => x.ico === body.ico)) return odpoved({ message: 'duplicate key value violates unique constraint "klient_ico_uq"' }, 409);
       const x = { id: 'kl' + Date.now(), ...body }; db.klient.push(x); return odpoved(x, 201); }
