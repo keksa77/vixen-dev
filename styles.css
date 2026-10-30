@@ -199,3 +199,5 @@ ol.navod{padding-left:22px;margin:4px 0 14px}ol.navod li{margin:0 0 18px;line-he
 .zpr-k.nova{border-left-color:var(--gold);background:#fffdf6}.zpr-k p{margin:6px 0 0;white-space:pre-wrap}.zpr-k small{color:var(--mute)}
 .zpr-hl{display:flex;justify-content:space-between;gap:8px;align-items:center}
 .zpr-box:not(.vse) .zpr-k.starsi{display:none}
+/* kdo co potvrdil */
+.nab-stav small{display:block;color:var(--mute);font-size:12.5px;margin-top:2px}

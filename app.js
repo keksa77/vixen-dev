@@ -337,7 +337,7 @@ async function nacti() {
     sb.from('osoba_foto').select('id,cesta,poradi').order('poradi'),
     sb.rpc('parametr_dnes', { p_kod: 'registrace_schvalovat' }),
     sb.rpc('moje_nabidky', { p_oznacit: false }),
-    sb.from('osoba_zprava').select('id,typ,predmet,text,vytvoreno,precteno_at').eq('kanal', 'aplikace').order('vytvoreno', { ascending: false }).limit(20),
+    sb.rpc('moje_zpravy'),
   ]);
   S.zpravy = Array.isArray(zpr?.data) ? zpr.data : [];
   S.nabidky = Array.isArray(nab?.data) ? nab.data : [];
@@ -361,7 +361,7 @@ function smlouvaKrok() {   // co je v kroku „Smlouva před první akcí“ na 
   const forma = S.osoba.forma_spoluprace;
   const dpp = S.dokumenty.find((x) => x.dokument_sablona?.druh === 'dpp');
   if (!vyzvan()) return { hotovo: false, kdo: 'kanc', popis: 'až před vaší první akcí – kancelář vám dá vědět' };
-  if (!forma) return { hotovo: false, kdo: 'vy', v: 'forma', popis: 'vyberte, jak s námi budete spolupracovat', tlac: 'Vybrat formu spolupráce' };
+  if (!forma) return { hotovo: false, kdo: 'vy', v: 'forma', popis: 'kancelář Vixen vás požádala o smlouvu – vyberte, jak s námi budete spolupracovat', tlac: 'Vybrat formu spolupráce' };
   if (forma === 'ico') return { hotovo: !!S.osoba.ico, kdo: 'vy', v: 'forma', popis: S.osoba.ico ? 'fakturujete na IČO ' + S.osoba.ico : 'doplňte IČO', tlac: 'Doplnit IČO' };
   if (!S.nastup?.potvrzeno_at) return { hotovo: false, kdo: 'vy', v: 'nastup', popis: 'rodné číslo, adresa, pojišťovna, účet', tlac: 'Vyplnit údaje' };
   if (forma === 'prilezitostna') return { hotovo: true, kdo: 'vy', v: 'dokumenty', popis: 'údaje máme – smlouvu připraví kancelář' };
@@ -372,7 +372,7 @@ function smlouvaKrok() {   // co je v kroku „Smlouva před první akcí“ na 
 function kroky() {
   const k = [{ id: 'reg', t: 'Registrace', kdo: 'vy', hotovo: true, popis: 'kontakt, města, fotka' }];
   if (S.schvalovat || !schvalena()) k.push({ id: 'schval', t: 'Schválení kanceláří', kdo: 'kanc', hotovo: schvalena(),
-    popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata' : 'kancelář projde vaši registraci',
+    popis: S.osoba.stav === 'odmitnuta' ? 'registrace nebyla přijata (rozhodla kancelář Vixen)' : schvalena() ? (S.osoba.stav_zmenil ? 'schválila kancelář Vixen' : 'přijato automaticky') : 'kancelář projde vaši registraci',
     cekani: 'Vaši registraci prochází kancelář. Po schválení vám dáme vědět.' });
   k.push({ id: 'profil', t: 'Profil', v: 'profil', kdo: 'vy', hotovo: !!S.profil && S.fotky.length > 0, popis: 'fotky, výška, jazyky, kdy můžete – upravit můžete kdykoli', tlac: 'Doplnit profil' });
   k.push({ id: 'plocha', t: 'Vixen na ploše telefonu', v: 'instalace', kdo: 'vy', volitelny: true, hotovo: naPlose(), popis: 'nabídky akcí zobrazujeme přednostně v aplikaci', tlac: 'Přidat na plochu' });
@@ -515,7 +515,7 @@ function zpravyHtml() {
   const l = S.zpravy || []; if (!l.length) return '';
   return `<div class="zpr-box"><h2>Zprávy od kanceláře</h2>${l.map((z, i) => `<div class="zpr-k${z.precteno_at ? '' : ' nova'}${i > 2 ? ' starsi' : ''}">
     <div class="zpr-hl"><b>${esc(z.predmet || 'Zpráva od kanceláře')}</b>${z.precteno_at ? '' : '<span class="tag t-w">nová</span>'}</div>
-    <small>${new Date(z.vytvoreno).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</small><p>${esc(z.text)}</p></div>`).join('')}
+    <small>od: kancelář Vixen${z.od ? ' – ' + esc(z.od) : ''} · ${new Date(z.vytvoreno).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</small><p>${esc(z.text)}</p></div>`).join('')}
     ${l.length > 3 ? '<button class="btn o mini zpr-dalsi">Starší zprávy</button>' : ''}</div>`;
 }
 
@@ -568,13 +568,13 @@ function kartaNabidky(n) {
   if (a.stav === 'zrusena') stav = msg('Akce byla zrušena' + (a.zruseni_duvod ? ': ' + esc(a.zruseni_duvod) : '.'), 'bad');
   else if (a.datum < dnesIso()) stav = `<p class="mute">Akce proběhla.${po ? ' Děkujeme!' : ''}</p>`;
   else if (po) { const sk = smlouvaKrok();
-    stav = `<div class="nab-stav ok"><b>Účast je potvrzená ✓</b>
+    stav = `<div class="nab-stav ok"><b>Účast je potvrzená ✓</b><small>potvrdila kancelář Vixen${n.rozhodl ? ' – ' + esc(n.rozhodl) : ''}${n.rozhodnuti_at ? ' · ' + kdyKratce(n.rozhodnuti_at) : ''}</small>
       <ul class="nab-kontakty">${kontakt(a.kontakt_vixen, 'za Vixen')}${(a.kontakty_klient || []).map((x) => kontakt(x, ROLE_K[x.role] || '')).join('')}</ul></div>
       ${!sk.hotovo && sk.v && sk.kdo === 'vy' ? `<div class="ted"><b>Před akcí: smlouva</b>${esc(sk.popis)}<button class="btn" data-krok="${sk.v}">${esc(sk.tlac || 'Pokračovat')} →</button></div>` : ''}
       <button class="btn o mini" data-o="nemuze" data-potvrd="Opravdu se z akce odhlásit? Kancelář místo obsadí někým jiným – prosím zavolejte jí také.">Nemůžu přijet (odhlásit se)</button>`; }
-  else if (n.rozhodnuti === 'odmitnuto') stav = '<p class="nab-stav">Tentokrát je obsazeno. Děkujeme za zájem – ozveme se s další nabídkou.</p>';
-  else if (n.odpoved === 'zajem') stav = `<div class="nab-stav wa"><b>Máte zájem ✓</b>Kancelář vám účast potvrdí – uvidíte to tady.</div><button class="btn o mini" data-o="nemuze">Nakonec nemůžu</button>`;
-  else if (n.odpoved === 'nemuze') stav = `<p class="nab-stav">Odpověděli jste: nemůžu.</p>${zav ? '' : '<button class="btn o mini" data-o="zajem">Přece jen mám zájem</button>'}`;
+  else if (n.rozhodnuti === 'odmitnuto') stav = `<p class="nab-stav">Tentokrát je obsazeno. Děkujeme za zájem – ozveme se s další nabídkou.<small>rozhodla kancelář Vixen${n.rozhodl ? ' – ' + esc(n.rozhodl) : ''}</small></p>`;
+  else if (n.odpoved === 'zajem') stav = `<div class="nab-stav wa"><b>Máte zájem ✓</b>Kancelář vám účast potvrdí – uvidíte to tady.<small>vaše odpověď${n.odpoved_at ? ' · ' + kdyKratce(n.odpoved_at) : ''}</small></div><button class="btn o mini" data-o="nemuze">Nakonec nemůžu</button>`;
+  else if (n.odpoved === 'nemuze') stav = `<p class="nab-stav">Odpověděli jste: nemůžu.<small>${n.odhlaseno_at ? 'odhlásili jste se po potvrzení' : 'vaše odpověď'}${n.odpoved_at ? ' · ' + kdyKratce(n.odpoved_at) : ''}</small></p>${zav ? '' : '<button class="btn o mini" data-o="zajem">Přece jen mám zájem</button>'}`;
   else stav = zav ? '<p class="nab-stav">Uzávěrka přihlášek minula. Pokud můžete, zavolejte do kanceláře.</p>'
     : `<div class="nab-tl"><button class="btn" data-o="zajem">Mám zájem</button><button class="btn o" data-o="nemuze">Nemůžu</button></div>`;
   return `<article class="card nab-karta-a${aktivni(n) ? '' : ' nab-stara'}" data-id="${n.id}">
@@ -887,7 +887,7 @@ function vDokumenty() {
   $app.innerHTML = `<h1>Smlouva</h1>${hlavni}
    <h2>Podepsané</h2>
    ${podepsane.map((d) => { const [t, c] = stavSmlouvy(d); const lze = d.odeslano_at && !d.odstoupeno_at && new Date(d.odstoupeni_do) > new Date();
-     return `<div class="sem dok-pod" data-id="${d.id}"><span>${esc(d.dokument_sablona?.nazev)}<br><span class="mute">podepsáno ${kdyCz(d.podepsano_at)} · ${esc(d.podpis?.zpusob || '')}</span>
+     return `<div class="sem dok-pod" data-id="${d.id}"><span>${esc(d.dokument_sablona?.nazev)}<br><span class="mute">za Vixen podepsal(a) ${esc(d.vixen_podpis?.jmeno || '')}${d.vixen_podepsano_at ? ' ' + kdyCz(d.vixen_podepsano_at) : ''} · vy jste podepsali ${kdyCz(d.podepsano_at)}${d.podpis?.zpusob ? ' (' + esc(d.podpis.zpusob) + ')' : ''}</span>
        <span class="akce">${d.pdf_cesta ? '<a href="#" class="pdf">Stáhnout PDF</a>' : ''}${!d.odeslano_at && !d.odstoupeno_at ? ' <button class="btn o mini poslat">Poslat PDF na e-mail</button>' : ''}${lze ? ' <a href="#" class="odstoupit">Odstoupit od smlouvy</a>' : ''}</span><span class="m2"></span></span>
        <span class="tag ${c}">${t}</span></div>`; }).join('') || '<p class="mute">Zatím nic.</p>'}`;
   const m = (t, typ) => { const el = document.getElementById('m'); if (el) el.innerHTML = msg(t, typ); };

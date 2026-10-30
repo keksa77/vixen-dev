@@ -33,7 +33,7 @@ stavy.forEach((stav, i) => {
   const vytv = new Date(TED - (stav === 'uchazec' ? nah(12 * 24) * 3600000 : (20 + nah(680)) * DEN));
   db.osoba.push({ id, auth_user_id: null, jmeno: jm, prijmeni: pr, telefon: '+420' + (6 + nah(2)) + (1 + nah(9)) + String(nah(1e7)).padStart(7, '0'), email: `${ascii(jm)}.${ascii(pr)}.${i + 1}@example.cz`,
     kraj_kod: kraj, obec: m[0], zajem: muz ? ['promoter'] : nah(4) ? ['hosteska'] : ['hosteska', 'promoter'], kanal_kontaktu: vyber([['email', 'sms'], ['email', 'sms', 'whatsapp'], ['email', 'whatsapp'], ['sms', 'whatsapp'], ['email']]),
-    stav, whatsapp_souhlas_at: null, smlouva_vyzva_at: null, souhlas_gdpr_v: '2026-dev', souhlas_gdpr_at: iso(vytv), vytvoreno: iso(vytv), zmeneno: iso(vytv) });
+    stav, stav_zmenil: stav === 'uchazec' ? null : 'demo-ladka', stav_zmeneno: iso(new Date(+vytv + 2 * DEN)), whatsapp_souhlas_at: null, smlouva_vyzva_at: null, smlouva_vyzva_kdo: null, souhlas_gdpr_v: '2026-dev', souhlas_gdpr_at: iso(vytv), vytvoreno: iso(vytv), zmeneno: iso(vytv) });
   const ok = CIS.okres.filter((o) => (o.kraj_kod === kraj && (nah(10) < 6 || o.kod === m[2])) || (o.kraj_kod === (SOUSED[kraj] || 'praha') && nah(10) < 3)).map((o) => o.kod);
   db.okres[id] = ok.length ? ok : [m[2]];
   { const o = db.osoba[db.osoba.length - 1]; if (o.kanal_kontaktu.includes('whatsapp')) o.whatsapp_souhlas_at = o.vytvoreno; }
@@ -79,14 +79,14 @@ db.akce = [
 ].map(([id, nazev, klient_id, okres_kod, adresa, den, sraz, od, do_, pocet, odmena, obleceni, popis]) => ({ id, nazev, klient_id, okres_kod, adresa, datum: denIso(den), sraz_cas: sraz + ':00', sraz_misto: null,
   prace_od: od + ':00', prace_do: do_ + ':00', kontakt_vixen: { jmeno: 'Laďka', telefon: '+420601000111' }, kontakty_klient: klient_id ? KK('Kontakt klienta (vymyšlený)', '+420601000333') : [],
   obleceni, obleceni_popis: popis, obleceni_foto: null, pocet_lidi: pocet, odmena, pozadavky: id === 'ak4' ? { vyska_od: 168, jazyk: 'angličtina' } : {}, uzaverka: den > 1 ? new Date(TED + (den - 1) * DEN).toISOString() : null,
-  poznamka: null, stav: id === 'ak8' ? 'zrusena' : 'priprava', zruseni_duvod: id === 'ak8' ? 'Klient stánek zrušil.' : null, zkopirovano_z: id === 'ak3' ? 'ak2' : null, vytvoreno: new Date(TED - 10 * DEN).toISOString(), zmeneno: new Date(TED - 10 * DEN).toISOString() }));
+  poznamka: null, vytvoril: 'demo-ladka', zmenil: 'demo-ladka', zrusil: id === 'ak8' ? 'demo-ladka' : null, stav: id === 'ak8' ? 'zrusena' : 'priprava', zruseni_duvod: id === 'ak8' ? 'Klient stánek zrušil.' : null, zkopirovano_z: id === 'ak3' ? 'ak2' : null, vytvoreno: new Date(TED - 10 * DEN).toISOString(), zmeneno: new Date(TED - 10 * DEN).toISOString() }));
 const nabVyrob = (akceId, okres, stavy) => {
   const lide = db.osoba.filter((o) => ['prijata', 'aktivni'].includes(o.stav) && db.okres[o.id].includes(okres)).slice(0, stavy.length);
   lide.forEach((o, i) => { const s = stavy[i], t = new Date(TED - (3 - (i % 3)) * 3600000).toISOString();
     db.nabidka.push({ id: 'nb-' + akceId + '-' + i, akce_id: akceId, osoba_id: o.id, token: 'demo-token-' + akceId + '-' + i, odeslano: new Date(TED - DEN).toISOString(),
       otevreno: s === 'neot' ? null : t, odkaz_otevren: null, odpoved: s === 'zajem' || s === 'potvrzeno' ? 'zajem' : s === 'nemuze' ? 'nemuze' : null, odpoved_at: ['zajem', 'potvrzeno', 'nemuze'].includes(s) ? t : null,
-      rozhodnuti: s === 'potvrzeno' ? 'potvrzeno' : null, rozhodnuti_at: s === 'potvrzeno' ? t : null, odhlaseno_at: null, whatsapp_at: null });
-    if (s === 'potvrzeno') o.smlouva_vyzva_at = o.smlouva_vyzva_at || t; });
+      rozhodnuti: s === 'potvrzeno' ? 'potvrzeno' : null, rozhodl: s === 'potvrzeno' ? 'demo-ladka' : null, odeslal: 'demo-ladka', rozhodnuti_at: s === 'potvrzeno' ? t : null, odhlaseno_at: null, whatsapp_at: null });
+    if (s === 'potvrzeno') { o.smlouva_vyzva_at = o.smlouva_vyzva_at || t; o.smlouva_vyzva_kdo = 'demo-ladka'; } });
 };
 db.nabidka = [];
 nabVyrob('ak1', 'ceske-budejovice', ['potvrzeno', 'potvrzeno', 'potvrzeno', 'zajem', 'zajem', 'nemuze', 'ceka', 'neot']);
@@ -129,6 +129,7 @@ window.fetch = async (vstup, init = {}) => {
   if (p.startsWith('/auth/v1/user')) return odpoved(USER);
   if (p.startsWith('/auth/v1/logout')) return odpoved(undefined, 204);
   if (p.startsWith('/auth/v1/')) return odpoved({ access_token: 'demo.demo.demo', token_type: 'bearer', expires_in: 86400, expires_at: exp, refresh_token: 'demo', user: USER });
+  if (p.endsWith('/rpc/kancelar_jmena')) return odpoved([{ id: 'demo-ladka', jmeno: 'Laďka (ukázka)', tbdb: false }, { id: 'demo-user', jmeno: 'Ukázka', tbdb: false }]);
   if (p.endsWith('/rpc/ma_pravo')) return odpoved(['vedeni', 'nabor', 'smlouvy', 'ucetni'].includes(body.p));
   if (p.endsWith('/rpc/kancelar_lide')) return odpoved(db.osoba.map((o) => { const n = db.nastup[o.id], d = (db.dok[o.id] || []).find((x) => x.stav !== 'zruseno');
     return { osoba_id: o.id, ma_profil: !!db.profil[o.id], udaje_hotove: !!n?.potvrzeno_at, vek: n ? Math.floor((TED - new Date(n.datum_narozeni)) / (365.25 * DEN)) : null, dpp_stav: dppStav(d), dpp_podepsano_at: d?.podepsano_at || null }; }));
@@ -141,7 +142,7 @@ window.fetch = async (vstup, init = {}) => {
   if (p.endsWith('/rpc/dokument_priprav')) { const id = body.p_osoba; db.dok[id] = [{ id: 'dd-n' + Date.now(), stav: 'k_podpisu', obsah: 'DOHODA O PROVEDENÍ PRÁCE\nUKÁZKOVÝ TEXT – vzor dodá Vixen', vytvoreno: new Date().toISOString(), podepsano_at: null, podpis: null, dokument_sablona: { nazev: 'Dohoda o provedení práce (zkušební text)', druh: 'dpp' } }, ...(db.dok[id] || [])]; return odpoved('nove'); }
   if (p.endsWith('/rpc/zmen_stav')) {
     if (['odmitnuta', 'neaktivni'].includes(body.p_stav) && !body.p_duvod) return odpoved({ message: 'Vyberte důvod (odmítnutí / vyřazení).' }, 400);
-    db.osoba.filter((o) => body.p_osoby.includes(o.id)).forEach((o) => { if (o.stav !== body.p_stav) { zaznamZmeny(o.id, { stav: o.stav }); o.stav = body.p_stav; }
+    db.osoba.filter((o) => body.p_osoby.includes(o.id)).forEach((o) => { if (o.stav !== body.p_stav) { zaznamZmeny(o.id, { stav: o.stav }); o.stav = body.p_stav; o.stav_zmenil = 'demo-user'; o.stav_zmeneno = new Date().toISOString(); }
       const k = db.kanc[o.id] || { neoslovovat: false }; db.kanc[o.id] = { duvod_vyrazeni: ['odmitnuta', 'neaktivni'].includes(body.p_stav) ? body.p_duvod : null, neoslovovat: body.p_neoslovovat ?? k.neoslovovat }; });
     return odpoved(body.p_osoby.length);
   }
@@ -199,11 +200,11 @@ window.fetch = async (vstup, init = {}) => {
       if (db.nabidka.some((n) => n.akce_id === a.id && n.osoba_id === id)) return r.uz_meli++;
       if (!['prijata', 'aktivni'].includes(o.stav) || db.kanc[id]?.neoslovovat) return r.vynechano++;
       r.nove++; db.nabidka.push({ id: 'nb-' + Date.now() + '-' + r.nove, akce_id: a.id, osoba_id: id, token: 'demo-token-' + Date.now() + r.nove, odeslano: new Date().toISOString(),
-        otevreno: null, odkaz_otevren: null, odpoved: null, odpoved_at: null, rozhodnuti: null, rozhodnuti_at: null, odhlaseno_at: null, whatsapp_at: null }); });
+        odeslal: 'demo-user', otevreno: null, odkaz_otevren: null, odpoved: null, odpoved_at: null, rozhodnuti: null, rozhodnuti_at: null, odhlaseno_at: null, whatsapp_at: null }); });
     return odpoved(r);
   }
   if (p.endsWith('/rpc/kancelar_nabidka_rozhodni')) {
-    db.nabidka.filter((n) => body.p_nabidky.includes(n.id)).forEach((n) => { n.rozhodnuti = body.p_rozhodnuti; n.rozhodnuti_at = body.p_rozhodnuti ? new Date().toISOString() : null;
+    db.nabidka.filter((n) => body.p_nabidky.includes(n.id)).forEach((n) => { n.rozhodnuti = body.p_rozhodnuti; n.rozhodl = body.p_rozhodnuti ? 'demo-user' : null; n.rozhodnuti_at = body.p_rozhodnuti ? new Date().toISOString() : null;
       if (body.p_rozhodnuti === 'potvrzeno') { const o = db.osoba.find((x) => x.id === n.osoba_id); o.smlouva_vyzva_at = o.smlouva_vyzva_at || new Date().toISOString(); } });
     return odpoved(body.p_nabidky.length);
   }
@@ -218,8 +219,8 @@ window.fetch = async (vstup, init = {}) => {
   }
   if (p.endsWith('/rest/v1/akce')) {
     const ted = new Date().toISOString();
-    if (m === 'POST') { const x = { id: 'ak' + Date.now(), stav: 'priprava', zruseni_duvod: null, obleceni_foto: null, zkopirovano_z: null, ...body, vytvoreno: ted, zmeneno: ted }; db.akce.push(x); return odpoved(x, 201); }
-    if (m === 'PATCH') { const x = db.akce.find((a) => a.id === hodnota(q, 'id')); if (x) Object.assign(x, body, { zmeneno: ted }); return odpoved(undefined, 204); }
+    if (m === 'POST') { const x = { id: 'ak' + Date.now(), vytvoril: 'demo-user', zmenil: 'demo-user', stav: 'priprava', zruseni_duvod: null, obleceni_foto: null, zkopirovano_z: null, ...body, vytvoreno: ted, zmeneno: ted }; db.akce.push(x); return odpoved(x, 201); }
+    if (m === 'PATCH') { const x = db.akce.find((a) => a.id === hodnota(q, 'id')); if (x) Object.assign(x, body, { zmeneno: ted, zmenil: 'demo-user' }, body.stav === 'zrusena' ? { zrusil: 'demo-user' } : body.stav ? { zrusil: null } : {}); return odpoved(undefined, 204); }
     return odpoved([...db.akce].sort((a, b) => (a.datum + a.sraz_cas < b.datum + b.sraz_cas ? -1 : 1)).map((a) => ({ ...a, klient: db.klient.find((k) => k.id === a.klient_id) || null })));
   }
   if (p.includes('/storage/v1/')) return odpoved({ Key: 'ukazka', signedURL: '#' });
