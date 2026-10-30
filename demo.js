@@ -34,8 +34,11 @@ stavy.forEach((stav, i) => {
   db.osoba.push({ id, auth_user_id: null, jmeno: jm, prijmeni: pr, telefon: '+420' + (6 + nah(2)) + (1 + nah(9)) + String(nah(1e7)).padStart(7, '0'), email: `${ascii(jm)}.${ascii(pr)}.${i + 1}@example.cz`,
     kraj_kod: kraj, obec: m[0], zajem: muz ? ['promoter'] : nah(4) ? ['hosteska'] : ['hosteska', 'promoter'], kanal_kontaktu: vyber([['email', 'sms'], ['email', 'sms', 'whatsapp'], ['email', 'whatsapp'], ['sms', 'whatsapp'], ['email']]),
     stav, stav_zmenil: stav === 'uchazec' ? null : 'demo-ladka', stav_zmeneno: iso(new Date(+vytv + 2 * DEN)), whatsapp_souhlas_at: null, smlouva_vyzva_at: null, smlouva_vyzva_kdo: null, souhlas_gdpr_v: '2026-dev', souhlas_gdpr_at: iso(vytv), vytvoreno: iso(vytv), zmeneno: iso(vytv) });
-  const ok = CIS.okres.filter((o) => (o.kraj_kod === kraj && (nah(10) < 6 || o.kod === m[2])) || (o.kraj_kod === (SOUSED[kraj] || 'praha') && nah(10) < 3)).map((o) => o.kod);
-  db.okres[id] = ok.length ? ok : [m[2]];
+  // kde může pracovat: konkrétní města jako v registraci – bydliště a 0–3 další města v kraji, občas jedno v sousedním kraji
+  const zKraje = CIS.okres.filter((o) => o.kraj_kod === kraj && o.kod !== m[2]), dalsi = [];
+  for (let n = nah(4); n > 0 && zKraje.length; n--) dalsi.push(zKraje.splice(nah(zKraje.length), 1)[0].kod);
+  if (nah(100) < 15) { const sous = CIS.okres.filter((o) => o.kraj_kod === (SOUSED[kraj] || 'praha')); dalsi.push(vyber(sous).kod); }
+  db.okres[id] = [...new Set([m[2], ...dalsi])];
   { const o = db.osoba[db.osoba.length - 1]; if (o.kanal_kontaktu.includes('whatsapp')) o.whatsapp_souhlas_at = o.vytvoreno; }
   db.foto[id] = nah(100) < 82 ? Array.from({ length: 1 + nah(3) }, (_, k) => `demo/${id}-${k + 1}-${muz ? 'm' : 'z'}.jpg`) : [];
   if (stav === 'uchazec') return;

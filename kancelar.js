@@ -34,14 +34,14 @@ function chybaFormu(form, text) {
 }
 const kdy = (d) => new Date(d).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 // kdo co nastavil: „Vixen – Laďka“, „TBDB – …“, „hosteska“, nebo „aplikace automaticky“ (+ kdy)
-const kdoTxt = (uid, cas, o) => { const j = S.jmena?.[uid];
+const kdoTxt = (uid, cas, o, kratce) => { const j = S.jmena?.[uid];
   const t = !uid ? 'aplikace automaticky' : o && uid === o.auth_user_id ? 'hosteska' : j ? `${j.tbdb ? 'TBDB' : 'Vixen'} – ${j.jmeno}` : 'kancelář';
-  return t + (cas ? ' · ' + kdy(cas) : ''); };
-const kdoZn = (uid, cas, o, pred = '') => `<small class="kdo">${pred}${esc(kdoTxt(uid, cas, o))}</small>`;
+  return t + (cas ? ' · ' + (kratce ? new Date(cas).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' }) : kdy(cas)) : ''); };
+const kdoZn = (uid, cas, o, pred = '', kratce) => `<small class="kdo">${pred}${esc(kdoTxt(uid, cas, o, kratce))}</small>`;
 // stav člověka: kdo registraci schválil / odmítl / vyřadil
-const stavKdo = (o) => o.stav === 'uchazec' ? `<small class="kdo">registrace – hosteska · ${kdy(o.vytvoreno)}</small>`
+const stavKdo = (o, kratce) => o.stav === 'uchazec' ? `<small class="kdo">registrace – hosteska · ${kdy(o.vytvoreno)}</small>`
   : !o.stav_zmenil && o.stav === 'prijata' ? `<small class="kdo">přijatá automaticky (schvalování vypnuté)${o.stav_zmeneno ? ' · ' + kdy(o.stav_zmeneno) : ''}</small>`
-  : kdoZn(o.stav_zmenil, o.stav_zmeneno, o);
+  : kdoZn(o.stav_zmenil, o.stav_zmeneno, o, '', kratce);
 const chyba = (e) => { const m = (e && (e.message || e.error_description)) || String(e);
   return /signups not allowed/i.test(m) ? 'Tento e-mail nemá přístup do kanceláře. Přihlaste se e-mailem, ke kterému vám TBDB nastavilo přístup.' : K.prelozChybu(m); };
 document.getElementById('odhlasit').onclick = async () => { if (window.VIXEN_DEMO) return (location.href = location.pathname); await sb.auth.signOut(); location.reload(); };
@@ -313,8 +313,8 @@ async function ciselniky() {
 }
 function mistaText(kody) {
   const po = {};
-  for (const k of kody) { const o = S.cis.okres[k]; const kr = o ? S.cis.kraj[o.kraj_kod] || o.kraj_kod : '?'; (po[kr] = po[kr] || []).push(o ? o.mesto : k); }
-  return Object.entries(po).map(([kr, m]) => `<b>${esc(kr)}:</b> ${m.map(esc).join(', ')}`).join('<br>') || '<span class="mute">neuvedeno</span>';
+  for (const k2 of kody) { const o = S.cis.okres[k2]; const kr = o ? S.cis.kraj[o.kraj_kod] || o.kraj_kod : '?'; (po[kr] = po[kr] || []).push(o ? o.mesto : k2); }
+  return Object.entries(po).map(([kr, m]) => `${m.sort((a, b) => a.localeCompare(b, 'cs')).map(esc).join(', ')} <span class="mute">– ${esc(kr)}</span>`).join('<br>') || '<span class="mute">neuvedeno</span>';
 }
 // Registrace: záložky s počty, kompaktní seznam (nejdéle čekající nahoře), detail vybrané registrace vedle, hromadné odmítnutí.
 // Schvaluje se vždy jednotlivě v detailu (záměrně – každého spolupracovníka posoudit).
@@ -339,7 +339,7 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
     <div class="reg-taby" role="tablist">${Object.entries(FILTR).map(([k, v]) => `<button role="tab" data-f="${k}" class="${k === filtr ? 'on' : ''}">${v[0]} <b>${vTabu(k).length}</b></button>`).join('')}</div>
     <input type="search" id="reg-hledat" placeholder="hledat jméno, telefon, e-mail" value="${esc(REG.hledat)}"></div>${hlaska}
    <div class="reg-obal"><div class="reg-seznam"><div id="reg-hrom" class="hromadne hidden"></div><div class="tab-obal"><table class="lide-tab reg-tab"><thead><tr>
-     <th class="vyb-sl"><input type="checkbox" id="reg-vse" title="Vybrat vše"></th><th></th><th>Jméno · kraj · zájem</th>
+     <th class="vyb-sl"><input type="checkbox" id="reg-vse" title="Vybrat vše"></th><th></th><th>Jméno · města · zájem</th>
      <th class="raz" id="reg-raz">${filtr === 'uchazec' ? 'Čeká' : 'Registrace'}<i></i></th>${filtr === 'uchazec' ? '' : '<th>Stav</th>'}</tr></thead><tbody id="reg-telo"></tbody></table></div>
      <p class="pozn">Po schválení se uchazeč může přihlásit e-mailem z registrace a doplnit profil a údaje pro smlouvu. E-mail o schválení odejde, pokud je zaškrtnutý (ve vývoji jen na adresy TBDB).</p></div>
     <div class="reg-detail" id="reg-detail"></div></div>`;
@@ -358,11 +358,11 @@ async function vPrihlasky(filtr = 'uchazec', hlaska = '') {
     const l = aktualni(), telo = document.getElementById('reg-telo');
     document.querySelector('#reg-raz i').textContent = REG.razeni > 0 ? (filtr === 'uchazec' ? ' ▼ nejdéle' : ' ▼ nejnovější') : ' ▲';
     if (!l.some((o) => o.id === REG.vybrano)) REG.vybrano = l[0]?.id || null;
-    telo.innerHTML = l.map((o) => { const kr = [...new Set((o.osoba_okres || []).map((x) => S.cis.okres[x.okres_kod]?.kraj_kod).filter(Boolean))].map((k) => S.cis.kraj[k] || k);
+    telo.innerHTML = l.map((o) => { const kr = (o.osoba_okres || []).map((x) => S.cis.okres[x.okres_kod]?.mesto || x.okres_kod).sort((a, b) => a.localeCompare(b, 'cs'));
       return `<tr data-id="${o.id}" class="${o.id === REG.vybrano ? 'on' : ''}${REG.vyber.has(o.id) ? ' vybran' : ''}">
         <td><input type="checkbox" class="vyb"${REG.vyber.has(o.id) ? ' checked' : ''}></td>
         <td>${o.fotky[0] ? `<span class="foto" data-cesta="${esc(o.fotky[0])}"><img alt=""></span>` : `<span class="foto bez">${inicialy(o)}</span>`}</td>
-        <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}<small>${esc([kr.slice(0, 2).join(', ') + (kr.length > 2 ? ' +' + (kr.length - 2) : ''), (o.zajem || []).map((z) => ZAJEM[z] || z).join(', ')].filter(Boolean).join(' · '))}</small></td>
+        <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}<small>${esc([kr.slice(0, 3).join(', ') + (kr.length > 3 ? ' +' + (kr.length - 3) : ''), (o.zajem || []).map((z) => ZAJEM[z] || z).join(', ')].filter(Boolean).join(' · '))}</small></td>
         <td class="nw">${filtr === 'uchazec' ? cekaZn(o) : `${datum(o.vytvoreno)}<small>změna ${datum(o.zmeneno)}</small>`}</td>
         ${filtr === 'uchazec' ? '' : `<td class="nw"><span class="tag ${STAV_O[o.stav][1]}">${STAV_O[o.stav][0]}</span>${stavKdo(o)}${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>`}</tr>`; }).join('')
       || `<tr><td colspan="5" class="prazdno">${REG.hledat ? 'Hledání nic nenašlo.' : filtr === 'uchazec' ? 'Žádné nové registrace.' : 'Nic tu není.'}</td></tr>`;
@@ -649,7 +649,7 @@ function vykresliTabulku() {
      <td><input type="checkbox" class="vyb" ${S.vyber.has(o.id) ? 'checked' : ''}></td>
      <td>${nahled(o)}</td>
      <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}${jinaAkceTenDen(o) ? ' <span class="tag t-r">jiná akce tento den</span>' : ''}<small>${esc(o.obec || '')}</small></td>
-     <td><span class="tag ${STAV_O[o.stav][1]}"${o.duvod ? ` title="Důvod: ${esc(DUVOD[o.duvod] || o.duvod)}"` : ''}>${STAV_O[o.stav][0]}</span>${stavKdo(o)}${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>
+     <td><span class="tag ${STAV_O[o.stav][1]}"${o.duvod ? ` title="Důvod: ${esc(DUVOD[o.duvod] || o.duvod)}"` : ''}>${STAV_O[o.stav][0]}</span>${stavKdo(o, true)}${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>
      <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a><small>${esc((o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '))}</small></td>
      <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(mesta.slice(0, 3).join(', '))}${mesta.length > 3 ? ` +${mesta.length - 3}` : ''}<small>${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}</small></td>
      <td>${esc((o.zajem || []).map((z) => ZAJEM[z] || z).join(', '))}</td>
@@ -732,9 +732,9 @@ function hromadne() {
 }
 
 function exportCsv(osoby) {
-  const h = ['Příjmení', 'Jméno', 'Telefon', 'E-mail', 'Bydliště', 'Stav', 'Kraje', 'Okresní města', 'Zájem', 'Kontakt přes', 'Výška', 'Konfekce', 'Bota', 'Jazyky', 'Řidičák', 'Auto', 'Dostupnost', 'Věk', 'Profil', 'Údaje', 'DPP podepsaná', 'Registrace'];
-  const r = osoby.map((o) => { const p = o.profil || {}; return [o.prijmeni, o.jmeno, o.telefon, o.email, o.obec, STAV_O[o.stav][0], krajeOsoby(o).map((k) => S.cis.kraj[k]).join(', '),
-    o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '), (o.zajem || []).map((z) => ZAJEM[z] || z).join(', '), (o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '),
+  const h = ['Příjmení', 'Jméno', 'Telefon', 'E-mail', 'Bydliště', 'Stav', 'Města (kde může pracovat)', 'Kraje', 'Zájem', 'Kontakt přes', 'Výška', 'Konfekce', 'Bota', 'Jazyky', 'Řidičák', 'Auto', 'Dostupnost', 'Věk', 'Profil', 'Údaje', 'DPP podepsaná', 'Registrace'];
+  const r = osoby.map((o) => { const p = o.profil || {}; return [o.prijmeni, o.jmeno, o.telefon, o.email, o.obec, STAV_O[o.stav][0], o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '),
+    krajeOsoby(o).map((k) => S.cis.kraj[k]).join(', '), (o.zajem || []).map((z) => ZAJEM[z] || z).join(', '), (o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '),
     p.vyska_cm || '', p.konfekce || '', p.bota_eu || '', (p.jazyky || []).join(', '), p.ridicak ? 'ano' : '', p.vlastni_auto ? 'ano' : '', p.dostupnost || '', o.vek ?? '',
     o.ma_profil ? 'ano' : 'ne', o.udaje ? 'ano' : 'ne', dppOk(o) ? datum(o.dpp_at) : (DPP_TXT[o.dpp] || 'ne'), datum(o.vytvoreno)]; });
   const csv = '﻿' + [h, ...r].map((x) => x.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
@@ -1324,13 +1324,9 @@ async function detailZpravy(o) {
 // ---------- úprava údajů člověka kanceláří ----------
 function vUpravOsobu(o) {
   const d = document.getElementById('detail'), p = o.profil || {};
-  const okresyKraje = Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs')).map(([kk, kn]) => {
-    const ok = Object.values(S.cis.okres).filter((x) => x.kraj_kod === kk).sort((a, b) => a.mesto.localeCompare(b.mesto, 'cs'));
-    const vyb = ok.filter((x) => o.okresy.includes(x.kod)).length;
-    return `<details class="upr-kraj"${vyb ? ' open' : ''}><summary>${esc(kn)} <span class="mute">${vyb ? `(${vyb})` : ''}</span></summary>
-      <label class="chk"><input type="checkbox" class="cely-kraj"> <span><b>celý kraj</b></span></label>
-      ${ok.map((x) => `<label class="chk"><input type="checkbox" name="okres" value="${x.kod}"${o.okresy.includes(x.kod) ? ' checked' : ''}> <span>${esc(x.mesto)}</span></label>`).join('')}</details>`;
-  }).join('');
+  const KRAJSKA = ['praha', 'brno-mesto', 'ostrava-mesto', 'plzen-mesto', 'ceske-budejovice', 'hradec-kralove', 'pardubice', 'olomouc', 'liberec', 'usti-nad-labem', 'zlin', 'jihlava', 'karlovy-vary'];
+  const vsechnaMesta = Object.values(S.cis.okres).sort((a, b) => a.mesto.localeCompare(b.mesto, 'cs'));
+  let mesta = [...o.okresy];
   const zaskrt = (nazev, mapa, vybrane) => Object.entries(mapa).map(([k, v]) => `<label class="chk"><input type="checkbox" name="${nazev}" value="${k}"${(vybrane || []).includes(k) ? ' checked' : ''}> <span>${esc(v)}</span></label>`).join(' ');
   const pole = (id, label, val, typ = 'text', extra = '') => `<div class="fld" data-f="${id}"><label for="u-${id}">${label}</label><input id="u-${id}" type="${typ}" value="${esc(val ?? '')}"${extra}><div class="err"></div></div>`;
   d.innerHTML = `<div class="det-hl"><div><h2>Upravit: ${esc(o.jmeno)} ${esc(o.prijmeni)}</h2><span class="mute">Změny se zapíšou do historie.</span></div><button class="zavrit" title="Zavřít">✕</button></div>
@@ -1339,11 +1335,14 @@ function vUpravOsobu(o) {
      ${pole('jmeno', 'Jméno', o.jmeno)}${pole('prijmeni', 'Příjmení', o.prijmeni)}
      ${pole('telefon', 'Telefon', o.telefon, 'tel')}${pole('email', 'E-mail', o.email, 'email')}
      ${o.auth_user_id ? '<p class="pozn">Účet už existuje: když změníte e-mail, přihlašuje se dál původním e-mailem. Změnu přihlašovacího e-mailu zařídí TBDB.</p>' : ''}
-     <div class="fld" data-f="kraj"><label for="u-kraj">Kraj bydliště</label><select id="u-kraj">${Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs')).map(([k, v]) => `<option value="${k}"${k === o.kraj_kod ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select><div class="err"></div></div>
-     ${pole('obec', 'Obec', o.obec)}
+     <div class="fld hidden" data-f="kraj"><label for="u-kraj">Kraj bydliště</label><select id="u-kraj">${Object.entries(S.cis.kraj).sort((a, b) => a[1].localeCompare(b[1], 'cs')).map(([k, v]) => `<option value="${k}"${k === o.kraj_kod ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select><div class="err"></div></div>
+     ${pole('obec', 'Kde bydlí (obec / město)', o.obec)}
      <div class="fld" data-f="zajem"><label>Zájem</label>${zaskrt('zajem', ZAJEM, o.zajem)}<div class="err"></div></div>
      <div class="fld" data-f="kanal"><label>Kontakt přes</label>${zaskrt('kanal', KANAL, o.kanal_kontaktu)}<div class="err"></div></div></section>
-    <section><h3>Kde může pracovat</h3><div class="fld" data-f="okresy">${okresyKraje}<div class="err"></div></div></section>
+    <section><h3>Kde může pracovat</h3><div class="fld" data-f="okresy"><p class="pozn">Konkrétní města, kam může dojet – kraj se dopočítá sám.</p>
+     <div id="upr-mesta" class="upr-mesta"></div>
+     <input id="upr-mesto" list="upr-mesta-dl" placeholder="+ přidat město (stačí začít psát)" autocomplete="off"><datalist id="upr-mesta-dl">${vsechnaMesta.map((x) => `<option value="${esc(x.mesto)}">`).join('')}</datalist>
+     <div class="upr-rychle"><span class="pozn">Krajská města:</span>${KRAJSKA.map((m) => `<button type="button" class="btn o mini" data-m="${m}">${esc(S.cis.okres[m]?.mesto || m)}</button>`).join('')}</div><div class="err"></div></div></section>
     <section><h3>Profil</h3>
      ${pole('vyska', 'Výška (cm)', p.vyska_cm, 'number', ' min="120" max="220"')}
      <div class="fld" data-f="konfekce"><label for="u-konfekce">Konfekce</label><select id="u-konfekce"><option value="">–</option>${KONFEKCE.map((k) => `<option${k === p.konfekce ? ' selected' : ''}>${k}</option>`).join('')}</select><div class="err"></div></div>
@@ -1358,7 +1357,15 @@ function vUpravOsobu(o) {
   d.querySelector('.zavrit').onclick = () => d.classList.add('hidden');
   d.querySelector('#upr-zpet').onclick = () => vDetailOsoby(o.id);
   K.jazykyZapni(d.querySelector('#upr-f'));
-  d.querySelectorAll('.cely-kraj').forEach((c) => (c.onchange = () => c.closest('details').querySelectorAll('input[name=okres]').forEach((x) => (x.checked = c.checked))));
+  const kresliMesta = () => { const box = d.querySelector('#upr-mesta');
+    box.innerHTML = mesta.map((m) => `<span class="chip-m">${esc(S.cis.okres[m]?.mesto || m)}<button type="button" data-x="${m}" title="Odebrat">✕</button></span>`).join('') || '<span class="mute">zatím žádné</span>';
+    box.querySelectorAll('button[data-x]').forEach((b) => (b.onclick = () => { mesta = mesta.filter((m) => m !== b.dataset.x); kresliMesta(); }));
+    d.querySelectorAll('.upr-rychle button').forEach((b) => b.classList.toggle('on', mesta.includes(b.dataset.m))); };
+  const pridej = (kod) => { if (kod && !mesta.includes(kod)) mesta.push(kod); kresliMesta(); };
+  const vstup = d.querySelector('#upr-mesto');
+  vstup.oninput = vstup.onchange = () => { const h = bezDiakritiky(vstup.value.trim()); const x = h && vsechnaMesta.find((m) => bezDiakritiky(m.mesto) === h); if (x) { pridej(x.kod); vstup.value = ''; } };
+  d.querySelectorAll('.upr-rychle button').forEach((b) => (b.onclick = () => (mesta.includes(b.dataset.m) ? (mesta = mesta.filter((m) => m !== b.dataset.m), kresliMesta()) : pridej(b.dataset.m))));
+  kresliMesta();
   d.querySelector('#upr-f').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target, h = (id) => d.querySelector('#u-' + id).value.trim(), vyb = (n) => [...d.querySelectorAll(`input[name=${n}]:checked`)].map((x) => x.value);
@@ -1369,7 +1376,7 @@ function vUpravOsobu(o) {
     const ec = K.emailChyba(h('email')); if (ec) chyby.email = ec;
     if (!h('obec')) chyby.obec = 'Vyplňte obec.';
     if (!vyb('zajem').length) chyby.zajem = 'Vyberte aspoň jednu možnost.';
-    if (!vyb('okres').length) chyby.okresy = 'Vyberte aspoň jedno město.';
+    if (!mesta.length) chyby.okresy = 'Vyberte aspoň jedno město.';
     if (h('vyska') && (+h('vyska') < 120 || +h('vyska') > 220)) chyby.vyska = 'Výška 120–220 cm.';
     if (h('bota') && (+h('bota') < 30 || +h('bota') > 50)) chyby.bota = 'Velikost bot 30–50.';
     if (Object.keys(chyby).length) {
@@ -1381,8 +1388,8 @@ function vUpravOsobu(o) {
     const profilPrazdny = !o.profil && !profil.vyska_cm && !profil.konfekce && !profil.bota_eu && !profil.jazyky.length && !profil.ridicak && !profil.vlastni_auto && !profil.dostupnost && !profil.zkusenosti;
     f.querySelector('button[type=submit]').disabled = true;
     const { error } = await sb.rpc('kancelar_uprav_osobu', { p_id: o.id,
-      p_osoba: { jmeno: h('jmeno'), prijmeni: h('prijmeni'), telefon: K.telefonNormalizuj(h('telefon')), email: h('email'), kraj_kod: h('kraj'), obec: h('obec'), zajem: vyb('zajem'), kanal_kontaktu: vyb('kanal') },
-      p_okresy: vyb('okres'), p_profil: profilPrazdny ? null : profil });
+      p_osoba: { jmeno: h('jmeno'), prijmeni: h('prijmeni'), telefon: K.telefonNormalizuj(h('telefon')), email: h('email'), kraj_kod: S.cis.okres[mesta[0]]?.kraj_kod || h('kraj'), obec: h('obec'), zajem: vyb('zajem'), kanal_kontaktu: vyb('kanal') },
+      p_okresy: mesta, p_profil: profilPrazdny ? null : profil });
     if (error) { f.querySelector('button[type=submit]').disabled = false; return chybaFormu(f, chyba(error)); }
     await nactiLidi(); vykresliTabulku(); await vDetailOsoby(o.id);
     d.querySelector('.det-hl').insertAdjacentHTML('afterend', msg('Údaje uloženy ✓'));
