@@ -1,6 +1,6 @@
 // Verze buildu – číslo buildu a datum doplní automat při nasazení (.github/workflows/nasadit.yml) z Gitu.
 // Ručně se mění jen VERZE při větší změně. V místní kopii se ukazuje „build dev“.
-window.VIXEN_VERZE = { verze: '0.7', build: 121, datum: '31. 10. 2026 01:35' };
+window.VIXEN_VERZE = { verze: '0.7', build: 122, datum: '31. 10. 2026 01:51' };
 (function () {
   var v = window.VIXEN_VERZE;
   var text = 'v' + v.verze + ' · build ' + v.build + ' · ' + v.datum;

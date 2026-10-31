@@ -496,6 +496,7 @@ function vPrehled() {
    <p class="mute">Vaše cesta k první akci – hotovo ${hotovych} z ${k.length}</p>
    <div class="prubeh"><div style="width:${Math.round((hotovych / k.length) * 100)}%"></div></div>
    ${noveNabidky().length ? `<div class="ted nab-karta"><b>Máte ${noveNabidky().length === 1 ? 'novou nabídku akce' : 'nové nabídky akcí (' + noveNabidky().length + ')'}</b>Podívejte se na podrobnosti a odpovězte – místa se obsazují rychle.<button class="btn" id="k-nab">Zobrazit nabídky →</button></div>` : ''}
+   ${denAkceHtml()}
    ${dulezitaHtml()}
    ${zpravyHtml()}
    ${ted}
@@ -506,6 +507,7 @@ function vPrehled() {
   const tl = document.getElementById('dal'); if (tl) tl.onclick = () => ukaz(dalsi.v);
   const kn = document.getElementById('k-nab'); if (kn) kn.onclick = () => ukaz('nabidky');
   const kd = document.getElementById('k-dul'); if (kd) kd.onclick = () => ukaz('nabidky');
+  zapniNaMiste($app, () => vPrehled());
   // zprávy od kanceláře: zobrazené = přečtené (štítek „nová“ zůstane do dalšího otevření)
   (S.zpravy || []).filter((z) => !z.precteno_at).forEach((z) => { z.precteno_at = new Date().toISOString(); sb.rpc('zprava_prectena', { p_id: z.id }).then(() => {}, () => {}); });
   $app.querySelectorAll('.zpr-dalsi').forEach((b) => (b.onclick = () => { b.closest('.zpr-box').classList.add('vse'); b.remove(); }));
@@ -521,6 +523,31 @@ function zpravyHtml() {
     <div class="zpr-hl"><b>${esc(z.predmet || 'Zpráva od kanceláře')}</b>${z.precteno_at ? '' : '<span class="tag t-w">nová</span>'}</div>
     <small>od: kancelář Vixen${z.od ? ' – ' + esc(z.od) : ''} · ${new Date(z.vytvoreno).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</small><p>${esc(z.text)}</p></div>`).join('')}
     ${l.length > 3 ? '<button class="btn o mini zpr-dalsi">Starší zprávy</button>' : ''}</div>`;
+}
+
+// ---------- DEN AKCE (modul 2, etapa D): připomenutí v aplikaci a „Jsem na místě“ ----------
+const zitraIso = () => { const d = new Date(Date.now() + 864e5); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const potvrzeneAktivni = () => (S.nabidky || []).filter((n) => n.rozhodnuti === 'potvrzeno' && n.akce.stav !== 'zrusena');
+function naMisteHtml(n) {
+  if (n.rozhodnuti !== 'potvrzeno' || n.akce.stav === 'zrusena' || n.akce.datum !== dnesIso()) return '';
+  if (n.prichod === 'na_miste') return `<div class="nab-stav ok na-miste"><b>Jste na místě ✓</b><small>${n.prichod_kancelar ? 'potvrdila kancelář Vixen' : 'potvrdili jste'}${n.prichod_at ? ' · ' + kdyKratce(n.prichod_at) : ''}</small></div>`;
+  if (n.prichod === 'nedorazila') return '<div class="nab-stav"><b>Kancelář vás vede jako nedorazili</b><small>Pokud jste na místě, zavolejte prosím do kanceláře.</small></div>';
+  return `<button class="btn btn-na-miste" data-na-miste="${n.id}">📍 Jsem na místě</button>`;
+}
+function denAkceHtml() {
+  const dnes = potvrzeneAktivni().filter((n) => n.akce.datum === dnesIso()), zitra = potvrzeneAktivni().filter((n) => n.akce.datum === zitraIso());
+  const karta = (n, kdy2) => `<div class="ted den-akce"><b>${kdy2} máte akci: ${esc(n.akce.nazev)}</b>sraz v ${cas(n.akce.sraz_cas)}${n.akce.sraz_misto ? ' – ' + esc(n.akce.sraz_misto) : ''}, ${esc(n.akce.adresa)}<br><small>${mapaOdkaz(n.akce.adresa)}</small>
+    ${kdy2 === 'Dnes' ? naMisteHtml(n) : '<small>Zítra na místě klepněte na „Jsem na místě“.</small>'}</div>`;
+  return [...dnes.map((n) => karta(n, 'Dnes')), ...zitra.map((n) => karta(n, 'Zítra'))].join('');
+}
+function zapniNaMiste(el, znovu) {
+  el.querySelectorAll('[data-na-miste]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    const { error } = await sb.rpc('nabidka_na_miste', { p_nabidka: b.dataset.naMiste });
+    if (error) { b.disabled = false; return b.insertAdjacentHTML('afterend', msg(esc(chybaText(error)), 'bad')); }
+    const { data } = await sb.rpc('moje_nabidky', { p_oznacit: false }); if (Array.isArray(data)) S.nabidky = data;
+    znovu();
+  }));
 }
 
 // ---------- ZPRÁVY K AKCI (modul 2, etapa C) ----------
@@ -563,6 +590,7 @@ async function vNabidky(hlaska = '') {
   $app.innerHTML = `<h1>Nabídky akcí</h1>${hlaska}
    ${l.length ? l.map(kartaNabidky).join('') : '<div class="card"><p>Zatím pro vás nemáme žádnou nabídku. Jakmile bude akce ve vašem městě, uvidíte ji tady.</p><p class="mute">Tip: přidejte si Vixen na plochu telefonu, ať vám nic neuteče.</p></div>'}`;
   if (noveZpravyAkce().length) sb.rpc('moje_zpravy_akce', { p_oznacit: true }).then(({ data: z }) => { if (Array.isArray(z)) { S.zpravyAkce = z; navStav(); } }, () => {});
+  zapniNaMiste($app, () => vNabidky());
   $app.querySelectorAll('.azp-f').forEach((fm) => (fm.onsubmit = async (e) => {
     e.preventDefault(); const t = fm.querySelector('textarea').value.trim(); if (!t) return;
     fm.querySelector('button').disabled = true;
@@ -598,7 +626,7 @@ function kartaNabidky(n) {
   if (a.stav === 'zrusena') stav = msg('Akce byla zrušena' + (a.zruseni_duvod ? ': ' + esc(a.zruseni_duvod) : '.'), 'bad');
   else if (a.datum < dnesIso()) stav = `<p class="mute">Akce proběhla.${po ? ' Děkujeme!' : ''}</p>`;
   else if (po) { const sk = smlouvaKrok();
-    stav = `<div class="nab-stav ok"><b>Účast je potvrzená ✓</b><small>potvrdila kancelář Vixen${n.rozhodl ? ' – ' + esc(n.rozhodl) : ''}${n.rozhodnuti_at ? ' · ' + kdyKratce(n.rozhodnuti_at) : ''}</small>
+    stav = `${naMisteHtml(n)}<div class="nab-stav ok"><b>Účast je potvrzená ✓</b><small>potvrdila kancelář Vixen${n.rozhodl ? ' – ' + esc(n.rozhodl) : ''}${n.rozhodnuti_at ? ' · ' + kdyKratce(n.rozhodnuti_at) : ''}</small>
       <ul class="nab-kontakty">${kontakt(a.kontakt_vixen, 'za Vixen')}${(a.kontakty_klient || []).map((x) => kontakt(x, ROLE_K[x.role] || '')).join('')}</ul></div>
       ${!sk.hotovo && sk.v && sk.kdo === 'vy' ? `<div class="ted"><b>Před akcí: smlouva</b>${esc(sk.popis)}<button class="btn" data-krok="${sk.v}">${esc(sk.tlac || 'Pokračovat')} →</button></div>` : ''}
       <button class="btn o mini" data-o="nemuze" data-potvrd="Opravdu se z akce odhlásit? Kancelář místo obsadí někým jiným – prosím zavolejte jí také.">Nemůžu přijet (odhlásit se)</button>`; }

@@ -88,7 +88,7 @@ const nabVyrob = (akceId, okres, stavy) => {
   lide.forEach((o, i) => { const s = stavy[i], t = new Date(TED - (3 - (i % 3)) * 3600000).toISOString();
     db.nabidka.push({ id: 'nb-' + akceId + '-' + i, akce_id: akceId, osoba_id: o.id, token: 'demo-token-' + akceId + '-' + i, odeslano: new Date(TED - DEN).toISOString(),
       otevreno: s === 'neot' ? null : t, odkaz_otevren: null, odpoved: s === 'zajem' || s === 'potvrzeno' ? 'zajem' : s === 'nemuze' ? 'nemuze' : null, odpoved_at: ['zajem', 'potvrzeno', 'nemuze'].includes(s) ? t : null,
-      rozhodnuti: s === 'potvrzeno' ? 'potvrzeno' : null, rozhodl: s === 'potvrzeno' ? 'demo-ladka' : null, odeslal: 'demo-ladka', rozhodnuti_at: s === 'potvrzeno' ? t : null, odhlaseno_at: null, whatsapp_at: null });
+      rozhodnuti: s === 'potvrzeno' ? 'potvrzeno' : null, rozhodl: s === 'potvrzeno' ? 'demo-ladka' : null, odeslal: 'demo-ladka', prichod: akceId === 'ak1' && i === 0 ? 'na_miste' : null, prichod_at: akceId === 'ak1' && i === 0 ? new Date(TED - 1800000).toISOString() : null, prichod_kdo: akceId === 'ak1' && i === 0 ? (o.auth_user_id = o.auth_user_id || 'u-' + o.id) : null, rozhodnuti_at: s === 'potvrzeno' ? t : null, odhlaseno_at: null, whatsapp_at: null });
     if (s === 'potvrzeno') { o.smlouva_vyzva_at = o.smlouva_vyzva_at || t; o.smlouva_vyzva_kdo = 'demo-ladka'; } });
 };
 db.nabidka = [];
@@ -227,6 +227,7 @@ window.fetch = async (vstup, init = {}) => {
   }
   // odpověď hostesky (v ukázce ji jde nasimulovat, např. pro video)
   if (p.endsWith('/rpc/nabidka_odpovez')) { const n = db.nabidka.find((x) => x.id === body.p_nabidka); const t = new Date().toISOString(); Object.assign(n, { odpoved: body.p_odpoved, odpoved_at: t, otevreno: n.otevreno || t }); return odpoved(null); }
+  if (p.endsWith('/rpc/kancelar_prichod')) { db.nabidka.filter((n) => body.p_nabidky.includes(n.id)).forEach((n) => Object.assign(n, { prichod: body.p_prichod, prichod_at: body.p_prichod ? new Date().toISOString() : null, prichod_kdo: body.p_prichod ? 'demo-user' : null })); return odpoved(body.p_nabidky.length); }
   if (p.endsWith('/rpc/kancelar_nabidka_whatsapp')) { const n = db.nabidka.find((x) => x.id === body.p_nabidka); n.whatsapp_at = new Date().toISOString(); return odpoved(null); }
   if (p.endsWith('/rest/v1/klient')) {
     if (m === 'POST') { if (body.ico && db.klient.some((x) => x.ico === body.ico)) return odpoved({ message: 'duplicate key value violates unique constraint "klient_ico_uq"' }, 409);

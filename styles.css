@@ -208,3 +208,7 @@ ol.navod{padding-left:22px;margin:4px 0 14px}ol.navod li{margin:0 0 18px;line-he
 .azp-vykr{display:inline-block;background:var(--bad);color:#fff;border-radius:99px;padding:1px 9px;font-weight:700;font-size:12px;margin-top:3px}
 .azp-f textarea{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font:inherit;margin:6px 0 4px}
 .ted.dul-karta{background:var(--bad-s);border-color:var(--bad)}.ted.dul-karta b{color:var(--bad)}
+/* den akce (hosteska) */
+.ted.den-akce{background:var(--ok-s);border-color:#9fd0b2}.ted.den-akce small{display:block;color:var(--mute)}
+.btn-na-miste{display:block;width:100%;margin:10px 0 4px;font-size:18px;padding:14px;background:var(--ok);border-color:var(--ok);color:#fff}
+.nab-stav.na-miste{margin:8px 0}

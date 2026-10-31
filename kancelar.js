@@ -266,7 +266,7 @@ async function vNastenka() {
   $app.innerHTML = `${await menu('nastenka')}<h1>Dnes je potřeba</h1><p class="mute">Počítá se z přijatých a aktivních lidí (${tym.length}). Kliknutím na dlaždici otevřete seznam.</p>
    <div class="tiles">${dlazdice.map(([c, n, t], i) => `<button class="tile ${n ? c : 'g'}" data-i="${i}"><div class="n">${n}</div>${t}</button>`).join('')}
     <div class="tile seda"><div class="n">–</div>nepřihlášeno ČSSZ<small>připravujeme</small></div><button class="tile ${volnaMista ? 'r' : 'g'}" id="t-volna"><div class="n">${volnaMista}</div>neobsazená místa na akcích<small>nadcházející akce</small></button></div>
-   <h2>Akce v příštích 7 dnech</h2>${tyden.length ? `<div class="ak-tyden">${tyden.map((a) => `<button class="ak-den" data-id="${a.id}"><b>${denAkce(a.datum)} · ${cas(a.sraz_cas)}</b>${esc(a.nazev)}<small>${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · obsazeno ${obsazeni(a).potvrzeno}/${a.pocet_lidi}${a.klient ? ' · ' + esc(a.klient.nazev) : ''}</small></button>`).join('')}</div>` : '<p class="mute">Žádná akce. Novou založíte v menu Akce.</p>'}`;
+   <h2>Akce v příštích 7 dnech</h2>${tyden.length ? `<div class="ak-tyden">${tyden.map((a) => `<button class="ak-den${prichody(a).chybi ? ' chybi' : ''}" data-id="${a.id}"><b>${denAkce(a.datum)} · ${cas(a.sraz_cas)}</b>${esc(a.nazev)}<small>${esc(S.cis.okres[a.okres_kod]?.mesto || '')} · obsazeno ${obsazeni(a).potvrzeno}/${a.pocet_lidi}${a.datum === dnesIso() ? ` · na místě ${prichody(a).naMiste}/${prichody(a).potvrzeno}${prichody(a).chybi ? ` · chybí ${prichody(a).chybi}` : ''}` : ''}${a.klient ? ' · ' + esc(a.klient.nazev) : ''}</small></button>`).join('')}</div>` : '<p class="mute">Žádná akce. Novou založíte v menu Akce.</p>'}`;
   zapniMenu();
   $app.querySelectorAll('.tile[data-i]').forEach((t) => (t.onclick = () => dlazdice[t.dataset.i][3]()));
   document.getElementById('t-volna').onclick = () => { AKF = { ...AKF0(), stav: ['nadchazejici'], obsazeni: 'chybi' }; ulozAKF(); vAkce(); };
@@ -509,7 +509,8 @@ const nahled = (o, velky) => o.fotky[0]
   : `<span class="foto bez${velky ? ' velka' : ''}" title="Bez fotky">${inicialy(o)}</span>`;
 
 // akce u člověka: poslední akce, na kterou byl potvrzený (už proběhla); nabídka na vybíranou akci; jiná potvrzená akce týž den
-const posledniAkce = (o) => (S.nabidky || []).filter((n) => n.osoba_id === o.id && n.rozhodnuti === 'potvrzeno')
+const nedorazil = (o) => (S.nabidky || []).filter((n) => n.osoba_id === o.id && n.prichod === 'nedorazila').length;
+const posledniAkce = (o) => (S.nabidky || []).filter((n) => n.osoba_id === o.id && n.rozhodnuti === 'potvrzeno' && n.prichod !== 'nedorazila')
   .map((n) => (S.akce || []).find((a) => a.id === n.akce_id)).filter((a) => a && a.stav !== 'zrusena' && a.datum < dnesIso()).map((a) => a.datum).sort().pop() || null;
 const nabidnutoNaAkci = (o) => !!S.proAkci && (S.nabidky || []).some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id);
 const jinaAkceTenDen = (o) => !!S.proAkci && (S.nabidky || []).some((n) => n.osoba_id === o.id && n.rozhodnuti === 'potvrzeno' && n.akce_id !== S.proAkci.id
@@ -649,7 +650,7 @@ function vykresliTabulku() {
     return `<tr data-id="${o.id}"${S.vyber.has(o.id) ? ' class="vybran"' : ''}>
      <td><input type="checkbox" class="vyb" ${S.vyber.has(o.id) ? 'checked' : ''}></td>
      <td>${nahled(o)}</td>
-     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}${jinaAkceTenDen(o) ? ' <span class="tag t-r">jiná akce tento den</span>' : ''}<small>${esc(o.obec || '')}</small></td>
+     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}${jinaAkceTenDen(o) ? ' <span class="tag t-r">jiná akce tento den</span>' : ''}${nedorazil(o) ? ` <span class="tag t-r" title="Kolikrát nedorazil/a na potvrzenou akci">nedorazil/a ${nedorazil(o)}×</span>` : ''}<small>${esc(o.obec || '')}</small></td>
      <td><span class="tag ${STAV_O[o.stav][1]}"${o.duvod ? ` title="Důvod: ${esc(DUVOD[o.duvod] || o.duvod)}"` : ''}>${STAV_O[o.stav][0]}</span>${stavKdo(o, true)}${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>
      <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a><small>${esc((o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '))}</small></td>
      <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(mesta.slice(0, 3).join(', '))}${mesta.length > 3 ? ` +${mesta.length - 3}` : ''}<small>${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}</small></td>
@@ -765,6 +766,10 @@ const CO_CHYBI = {
 // co člověku chybí (stejné pořadí jako připomínka na serveru)
 const chybiKrok = (o) => !o.auth_user_id ? 'prihlaseni' : !o.ma_profil ? 'profil' : o.smlouva_vyzva_at && !o.udaje ? 'udaje' : o.dpp === 'ceka_hosteska' ? 'podpis' : '';
 const ZP_DRUH = {
+  pripominka_akce: { t: 'Připomínka akce', typ: () => 'pripominka_akce', vynech: () => '',
+    aplikace: ['Připomínka: {akce}', 'Dobrý den, {oslovení},\npřipomínáme akci {akce}. Sraz: {sraz}.\nNa místě prosím klepněte v aplikaci na „Jsem na místě“.\nKancelář Vixen'],
+    email: ['Vixen – připomínka akce {akce}', 'Dobrý den, {oslovení},\n\npřipomínáme akci {akce}.\nSraz: {sraz}.\n\nNa místě prosím klepněte v aplikaci na „Jsem na místě“: {odkaz}\n\nDěkujeme,\nkancelář Vixen hostesky'],
+    whatsapp: [null, 'Dobrý den, {oslovení}, připomínáme akci {akce}. Sraz: {sraz}. Na místě prosím klepněte v aplikaci na „Jsem na místě“: {odkaz}\nVixen'] },
   akce_zprava: { t: 'Zpráva k akci', typ: () => 'akce_zprava', vynech: () => '',
     aplikace: ['Zpráva k akci: {akce}', 'Dobrý den, {oslovení},\n{text}\nKancelář Vixen'],
     email: ['Vixen – zpráva k akci {akce}', 'Dobrý den, {oslovení},\n\nk akci {akce}:\n{text}\n\nVšechny zprávy k akci najdete v aplikaci: {odkaz}\n\nDěkujeme,\nkancelář Vixen hostesky'],
@@ -791,7 +796,7 @@ function zpravaPanel(el, osoby, opt = {}) {
   const odkaz = (o) => (akce && opt.nabidky?.[o.id] ? base + '#n=' + opt.nabidky[o.id].token : base);
   const akceText = akce ? `${akce.nazev} (${denAkce(akce.datum)}, ${S.cis.okres[akce.okres_kod]?.mesto || ''})` : '';
   const vypln = (t, o) => t.split('{oslovení}').join(K.vokativ(o.jmeno)).split('{odkaz}').join(odkaz(o)).split('{akce}').join(akceText)
-    .split('{co chybí}').join((CO_CHYBI[chybiKrok(o)] || '')).split('{email}').join(o.email).split('{text}').join(opt.text || '');
+    .split('{co chybí}').join((CO_CHYBI[chybiKrok(o)] || '')).split('{email}').join(o.email).split('{text}').join(opt.text || '').split('{sraz}').join(akce ? `${cas(akce.sraz_cas)}${akce.sraz_misto ? ', ' + akce.sraz_misto : ''}, ${akce.adresa}` : '');
   const prijemci = (k) => osoby.filter((o) => !o.neoslovovat && ['prijata', 'aktivni'].includes(o.stav) && !ZP_DRUH[st.druh].vynech(o) && (k !== 'whatsapp' || (o.whatsapp_souhlas_at && !(st.druh === 'nabidka' && opt.nabidky?.[o.id]?.otevreno))));
   el.insertAdjacentHTML('beforeend', `<div class="potvrd-h zp-panel"><div class="zp-hl"><b>Poslat zprávu – vybráno ${osoby.length}</b><button type="button" class="btn o mini" data-zp-zavrit>Zavřít</button></div>
     ${druhy.length > 1 ? `<div class="zp-druh">${druhy.map((d) => `<label><input type="radio" name="zp-druh" value="${d}"${d === st.druh ? ' checked' : ''}> ${ZP_DRUH[d].t}</label>`).join('')}</div>` : ''}
@@ -1166,6 +1171,9 @@ async function vAkceForm(a, hlaska = '', opt = {}) {
 
 // ---------- NABÍDKA A OBSAZENÍ (modul 2, etapa B) ----------
 // odpoved = hosteska (zájem / nemůže), rozhodnuti = kancelář (potvrzeno / tentokrát ne). Potvrzení zároveň odemkne smlouvu.
+// den akce: po srazu = dnes a čas srazu už minul (místní čas prohlížeče)
+const poSrazu = (a) => a.datum === dnesIso() && new Date().toTimeString().slice(0, 5) >= cas(a.sraz_cas);
+const prichody = (a) => { const p = nabidkyAkce(a).filter((n) => n.rozhodnuti === 'potvrzeno'); return { potvrzeno: p.length, naMiste: p.filter((n) => n.prichod === 'na_miste').length, nedorazilo: p.filter((n) => n.prichod === 'nedorazila').length, chybi: poSrazu(a) ? p.filter((n) => !n.prichod).length : 0 }; };
 const NAB_STAV = { potvrzeno: ['potvrzeno', 't-ok'], zajem: ['má zájem', 't-w'], ceka: ['bez odpovědi', 't-g'], nemuze: ['nemůže', 't-b'], odmitnuto: ['tentokrát ne', 't-b'] };
 const nabStav = (n) => n.rozhodnuti || n.odpoved || 'ceka';
 const nabidkyAkce = (a) => (S.nabidky || []).filter((n) => n.akce_id === a.id);
@@ -1186,24 +1194,38 @@ async function obsazeniSekce(a, probehla, hlaska = '') {
   const otevr = (n) => n.otevreno ? 'v aplikaci ' + kdy(n.otevreno) : n.odkaz_otevren ? 'odkaz ' + kdy(n.odkaz_otevren) + ', zatím nepřihlášen/a' : '<span class="no">neotevřel/a</span>';
   box.innerHTML = `<section class="card ak-obs"><h2>Nabídka a obsazení</h2>${hlaska}
     <div class="ak-souhrn"><span class="ak-cislo ${o.potvrzeno >= a.pocet_lidi ? 'ok' : ''}"><b>${o.potvrzeno}/${a.pocet_lidi}</b> potvrzeno</span>
+     ${a.datum <= dnesIso() ? (() => { const pr = prichody(a); return `<span class="ak-cislo ${pr.chybi ? '' : 'ok'}"><b>${pr.naMiste}/${pr.potvrzeno}</b> na místě</span>${pr.chybi ? `<span class="no">po srazu chybí ${pr.chybi}</span>` : ''}${pr.nedorazilo ? `<span class="no">nedorazilo ${pr.nedorazilo}</span>` : ''}`; })() : ''}
      <span>má zájem <b>${o.zajem}</b></span><span>bez odpovědi <b>${o.ceka}</b> (neotevřelo ${o.neotevreno})</span><span>nemůže <b>${o.nemuze}</b></span><span>nabídnuto <b>${o.celkem}</b></span></div>
     ${o.potvrzeno > a.pocet_lidi ? msg(`Potvrzeno je víc lidí (${o.potvrzeno}), než je potřeba (${a.pocet_lidi}).`, 'warn') : ''}
     <div class="akce"><button class="btn mini" id="ak-vybrat"${probehla ? ' disabled title="Akce už proběhla"' : ''}>Vybrat lidi a poslat nabídku</button>
      <button class="btn o mini" id="ak-pripom"${bezOdpovedi.length && !probehla ? '' : ' disabled'}>Připomenout nabídku – bez odpovědi (${bezOdpovedi.length})</button>
-     <button class="btn o mini" id="ak-zprava"${potvrzeni.length ? '' : ' disabled'}>Zpráva potvrzeným (${potvrzeni.length})</button></div>
+     <button class="btn o mini" id="ak-zprava"${potvrzeni.length ? '' : ' disabled'}>Zpráva potvrzeným (${potvrzeni.length})</button>
+     <button class="btn o mini" id="ak-pripom-akci"${potvrzeni.length && !probehla ? '' : ' disabled'}>Připomenout akci potvrzeným…</button></div>
     <div id="ak-zp-box"></div>
     ${l.length ? `<p class="pozn">Potvrzením člověku zároveň odemknete údaje a smlouvu v aplikaci (pokud je ještě nemá). Kontakty a podrobnosti uvidí až po potvrzení.</p>
-    <div class="tab-obal"><table class="lide-tab ak-nab"><thead><tr><th>Foto</th><th>Jméno</th><th>Stav</th><th>Nabídku viděl/a</th><th>Smlouva</th><th></th></tr></thead><tbody>${l.map(({ n, o: x }) => { const s = nabStav(n);
-      return `<tr data-n="${n.id}"><td>${nahled(x)}</td><td><b>${esc(x.prijmeni)} ${esc(x.jmeno)}</b><small><a class="tel" href="tel:${esc(x.telefon)}">${esc(x.telefon)}</a></small></td>
+    <div class="tab-obal"><table class="lide-tab ak-nab"><thead><tr><th>Foto</th><th>Jméno</th><th>Stav</th><th>Příchod</th><th>Nabídku viděl/a</th><th>Smlouva</th><th></th></tr></thead><tbody>${l.map(({ n, o: x }) => { const s = nabStav(n);
+      const den = a.datum <= dnesIso() && s === 'potvrzeno', pozde = s === 'potvrzeno' && !n.prichod && poSrazu(a);
+      const prichodTd = s !== 'potvrzeno' ? '<td class="mute">–</td>' : n.prichod === 'na_miste' ? `<td class="nw"><b class="ok">✓ na místě</b> ${kdoZn(n.prichod_kdo, n.prichod_at, x)}</td>`
+        : n.prichod === 'nedorazila' ? `<td class="nw"><b class="no">nedorazil/a</b> ${kdoZn(n.prichod_kdo, n.prichod_at, x)}</td>`
+        : pozde ? `<td class="nw"><b class="no">po srazu není na místě</b><a class="btn mini" href="tel:${esc(x.telefon)}">📞 Zavolat</a></td>` : `<td class="mute nw">${a.datum === dnesIso() ? 'čeká se (sraz ' + cas(a.sraz_cas) + ')' : a.datum < dnesIso() ? 'neoznačeno' : 'v den akce'}</td>`;
+      const prichodTl = !den ? '' : `${n.prichod !== 'na_miste' ? '<button class="btn mini" data-p="na_miste">Dorazil/a</button> ' : ''}${n.prichod !== 'nedorazila' ? '<button class="btn o mini" data-p="nedorazila">Nedorazil/a</button> ' : ''}${n.prichod ? '<button class="btn o mini" data-p="">Vrátit příchod</button>' : ''}`;
+      return `<tr data-n="${n.id}"${pozde ? ' class="ak-pozde"' : ''}><td>${nahled(x)}</td><td><b>${esc(x.prijmeni)} ${esc(x.jmeno)}</b><small><a class="tel" href="tel:${esc(x.telefon)}">${esc(x.telefon)}</a></small></td>
        <td><span class="tag ${NAB_STAV[s][1]}">${NAB_STAV[s][0]}</span>${n.rozhodnuti ? kdoZn(n.rozhodl, n.rozhodnuti_at) : n.odpoved ? `<small class="kdo">odpověděla hosteska · ${kdy(n.odpoved_at)}</small>` : kdoZn(n.odeslal, n.odeslano, null, 'nabídku poslal(a): ')}${n.odhlaseno_at && !n.rozhodnuti ? `<small class="no">hosteska se odhlásila po potvrzení · ${kdy(n.odhlaseno_at)}</small>` : ''}</td>
-       <td class="nw">${otevr(n)}${n.whatsapp_at ? `<small>WhatsApp ${kdy(n.whatsapp_at)}</small>` : ''}</td>
+       ${prichodTd}<td class="nw">${otevr(n)}${n.whatsapp_at ? `<small>WhatsApp ${kdy(n.whatsapp_at)}</small>` : ''}</td>
        <td>${x.dpp ? esc(DPP_TXT[x.dpp] || x.dpp) : x.smlouva_vyzva_at ? '<span class="mute">vyzván/a, zatím bez smlouvy</span>' : '<span class="mute">–</span>'}</td>
-       <td class="nw">${s !== 'potvrzeno' && !probehla ? '<button class="btn mini" data-r="potvrzeno">Potvrdit</button> ' : ''}${s !== 'odmitnuto' && s !== 'nemuze' && !probehla ? '<button class="btn o mini" data-r="odmitnuto">Tentokrát ne</button> ' : ''}${n.rozhodnuti && !probehla ? '<button class="btn o mini" data-r="">Vrátit</button>' : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+       <td class="nw">${s !== 'potvrzeno' && !probehla ? '<button class="btn mini" data-r="potvrzeno">Potvrdit</button> ' : ''}${s !== 'odmitnuto' && s !== 'nemuze' && !probehla ? '<button class="btn o mini" data-r="odmitnuto">Tentokrát ne</button> ' : ''}${n.rozhodnuti && !probehla ? '<button class="btn o mini" data-r="">Vrátit</button>' : ''}${prichodTl}</td></tr>`; }).join('')}</tbody></table></div>`
     : '<p class="mute">Nabídku zatím nikdo nedostal. Klikněte na „Vybrat lidi a poslat nabídku“ – filtr v Lidé se předvyplní podle města a požadavků akce.</p>'}</section>`;
   podepisFotky(l.map(({ o: x }) => x.fotky[0]).filter(Boolean)).then(() => box.querySelectorAll('.foto[data-cesta] img').forEach((i) => (i.src = S.fotoUrl[i.parentElement.dataset.cesta] || '')));
   document.getElementById('ak-vybrat').onclick = () => lideProAkci(a);
   const zpNab = Object.fromEntries(l.map(({ n }) => [n.osoba_id, n])), obnov = async () => { await nactiAkce(); };
   document.getElementById('ak-pripom').onclick = () => zpravaPanel(document.getElementById('ak-zp-box'), bezOdpovedi.map(({ o: x }) => x), { druhy: ['nabidka', 'vlastni'], akce: a, nabidky: zpNab, hotovo: obnov });
+  document.getElementById('ak-pripom-akci').onclick = () => zpravaPanel(document.getElementById('ak-zp-box'), potvrzeni.map(({ o: x }) => x), { druhy: ['pripominka_akce', 'vlastni'], akce: a, nabidky: zpNab, hotovo: obnov });
+  box.querySelectorAll('button[data-p]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    const { error } = await sb.rpc('kancelar_prichod', { p_nabidky: [b.closest('tr').dataset.n], p_prichod: b.dataset.p || null });
+    if (error) { b.disabled = false; return box.querySelector('.ak-souhrn').insertAdjacentHTML('afterend', msg(esc(chyba(error)), 'bad')); }
+    await nactiAkce(); obsazeniSekce(S.akce.find((x) => x.id === a.id), probehla, msg('Příchod uložen ✓'));
+  }));
   document.getElementById('ak-zprava').onclick = () => zpravaPanel(document.getElementById('ak-zp-box'), potvrzeni.map(({ o: x }) => x), { druhy: ['vlastni'], akce: a, nabidky: zpNab, hotovo: obnov });
   box.querySelectorAll('button[data-r]').forEach((b) => (b.onclick = async () => {
     b.disabled = true;
