@@ -94,6 +94,12 @@ const nabVyrob = (akceId, okres, stavy) => {
 db.nabidka = [];
 nabVyrob('ak1', 'ceske-budejovice', ['potvrzeno', 'potvrzeno', 'potvrzeno', 'zajem', 'zajem', 'nemuze', 'ceka', 'neot']);
 nabVyrob('ak2', 'pisek', ['potvrzeno', 'zajem', 'zajem', 'neot', 'neot', 'neot']);
+// zprávy k dnešní akci: důležitá změna všem potvrzeným, odpověď hostesky (nepřečtená)
+db.azp = []; db.azpP = [];
+{ const pot = db.nabidka.filter((n) => n.akce_id === 'ak1' && n.rozhodnuti === 'potvrzeno');
+  db.azp.push({ id: 'azp1', akce_id: 'ak1', osoba_id: null, od_kancelare: true, autor: 'demo-ladka', text: 'Dobrý den, sraz je u vchodu B (u lékárny), ne u hlavního vchodu.', dulezita: true, precteno_kancelari: null, vytvoreno: new Date(TED - 5 * 3600000).toISOString() });
+  pot.slice(0, 2).forEach((n) => db.azpP.push({ zprava_id: 'azp1', osoba_id: n.osoba_id, precteno_at: new Date(TED - 4 * 3600000).toISOString() }));
+  if (pot[0]) db.azp.push({ id: 'azp2', akce_id: 'ak1', osoba_id: pot[0].osoba_id, od_kancelare: false, autor: null, text: 'Děkuji, budu tam v 8:20.', dulezita: false, precteno_kancelari: null, vytvoreno: new Date(TED - 3 * 3600000).toISOString() }); }
 db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro TBDB', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
 
 // ilustrační „fotky“ (vymyšlené postavy, žádné skutečné osoby) – SVG podle cesty
@@ -195,6 +201,14 @@ window.fetch = async (vstup, init = {}) => {
   }
   if (p.endsWith('/rest/v1/tiket_zprava')) { if (m === 'POST') { db.zprava.push({ ...body, id: 'z' + db.zprava.length, vytvoreno: new Date().toISOString() }); return odpoved(undefined, 201); } return odpoved(db.zprava.filter((z) => z.tiket_id === hodnota(q, 'tiket_id'))); }
   if (p.endsWith('/rest/v1/tiket_priloha')) return odpoved(m === 'POST' ? undefined : [], m === 'POST' ? 201 : 200);
+  if (p.endsWith('/rest/v1/akce_zprava')) { let l = db.azp; const ak = hodnota(q, 'akce_id'); if (ak) l = l.filter((z) => z.akce_id === ak);
+    if (q.get('od_kancelare') === 'eq.false') l = l.filter((z) => !z.od_kancelare); if (q.get('precteno_kancelari') === 'is.null') l = l.filter((z) => !z.precteno_kancelari);
+    if (m === 'HEAD') return new Response(null, { status: 200, headers: { 'content-range': '*/' + l.length } });
+    return odpoved([...l].sort((a, b) => (a.vytvoreno < b.vytvoreno ? -1 : 1))); }
+  if (p.endsWith('/rest/v1/akce_zprava_precteni')) return odpoved(db.azpP);
+  if (p.endsWith('/rpc/akce_zprava_posli')) { const z = { id: 'azp' + Date.now(), akce_id: body.p_akce, osoba_id: body.p_osoba || null, od_kancelare: true, autor: 'demo-user', text: body.p_text, dulezita: !!body.p_dulezita, precteno_kancelari: null, vytvoreno: new Date().toISOString() };
+    db.azp.push(z); return odpoved(z.id); }
+  if (p.endsWith('/rpc/akce_zpravy_prectene_kancelari')) { db.azp.filter((z) => z.akce_id === body.p_akce && !z.od_kancelare && !z.precteno_kancelari).forEach((z) => (z.precteno_kancelari = new Date().toISOString())); return odpoved(null); }
   if (p.endsWith('/rest/v1/akce_nabidka')) return odpoved(db.nabidka);
   if (p.endsWith('/rpc/kancelar_nabidka_posli')) {
     const a = db.akce.find((x) => x.id === body.p_akce), r = { nove: 0, uz_meli: 0, vynechano: 0 };

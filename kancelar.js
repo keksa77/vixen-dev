@@ -220,10 +220,11 @@ async function odeslat(e) {
 // ---------- menu kanceláře ----------
 async function menu(aktivni) {
   if (!S.nabor) return '';
-  const [{ count }, { count: dotazy }] = await Promise.all([sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec'),
-    sb.from('tiket').select('id', { count: 'exact', head: true }).in('stav', S.tbdb ? ['novy', 'resime'] : ['ceka_na_vas'])]);
+  const [{ count }, { count: dotazy }, { count: odpovedi }] = await Promise.all([sb.from('osoba').select('id', { count: 'exact', head: true }).eq('stav', 'uchazec'),
+    sb.from('tiket').select('id', { count: 'exact', head: true }).in('stav', S.tbdb ? ['novy', 'resime'] : ['ceka_na_vas']),
+    sb.from('akce_zprava').select('id', { count: 'exact', head: true }).eq('od_kancelare', false).is('precteno_kancelari', null)]);
   document.body.classList.add('ma-side'); document.body.classList.toggle('siroka', ['lide', 'nastenka', 'prihlasky', 'akce'].includes(aktivni));
-  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Registrace', count], ['akce', 'Akce'], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, !(S.vedeni || S.tbdb)], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
+  const pol = [['nastenka', 'Nástěnka'], ['lide', 'Lidé'], ['prihlasky', 'Registrace', count], ['akce', 'Akce', odpovedi], ['dokumenty', 'Dokumenty', null, 1], ['hodiny', 'Hodiny', null, 1], ['vyplaty', 'Výplaty', null, 1], ['nastaveni', 'Nastavení', null, !(S.vedeni || S.tbdb)], ['dotazy', S.tbdb ? 'Dotazy od Vixen' : 'Dotazy pro TBDB', dotazy]];
   return `<nav class="knav kside">${pol.map(([v, t, n, pripr]) => `<button data-v="${v}"${aktivni === v ? ' class="on"' : ''}${pripr ? ' disabled title="Připravujeme"' : ''}>${t}${n ? ` <span class="pocet">${n}</span>` : ''}${pripr ? '<small>připravujeme</small>' : ''}</button>`).join('')}</nav>`;
 }
 function zapniMenu() {
@@ -764,6 +765,10 @@ const CO_CHYBI = {
 // co člověku chybí (stejné pořadí jako připomínka na serveru)
 const chybiKrok = (o) => !o.auth_user_id ? 'prihlaseni' : !o.ma_profil ? 'profil' : o.smlouva_vyzva_at && !o.udaje ? 'udaje' : o.dpp === 'ceka_hosteska' ? 'podpis' : '';
 const ZP_DRUH = {
+  akce_zprava: { t: 'Zpráva k akci', typ: () => 'akce_zprava', vynech: () => '',
+    aplikace: ['Zpráva k akci: {akce}', 'Dobrý den, {oslovení},\n{text}\nKancelář Vixen'],
+    email: ['Vixen – zpráva k akci {akce}', 'Dobrý den, {oslovení},\n\nk akci {akce}:\n{text}\n\nVšechny zprávy k akci najdete v aplikaci: {odkaz}\n\nDěkujeme,\nkancelář Vixen hostesky'],
+    whatsapp: [null, 'Dobrý den, {oslovení}, k akci {akce}: {text}\nVíce v aplikaci: {odkaz}\nVixen'] },
   pripominka: { t: 'Připomínka – co chybí', typ: (o) => 'pripominka_' + chybiKrok(o), vynech: (o) => (!chybiKrok(o) ? 'nic nechybí' : ''),
     aplikace: ['Připomínka od kanceláře', 'Dobrý den, {oslovení},\nprosíme vás ještě {co chybí}.\nDěkujeme, kancelář Vixen'],
     email: ['Vixen – připomínka', 'Dobrý den, {oslovení},\n\nprosíme vás ještě {co chybí}.\n\nAplikace Vixen: {odkaz}\n\nDěkujeme,\nkancelář Vixen hostesky'],
@@ -781,16 +786,16 @@ const ZP_DRUH = {
 function zpravaPanel(el, osoby, opt = {}) {
   el.querySelector('.zp-panel')?.remove();
   const druhy = opt.druhy || ['pripominka', 'vlastni'], akce = opt.akce;
-  const st = { druh: druhy[0], kanaly: new Set(['aplikace']), texty: {} };
+  const st = { druh: druhy[0], kanaly: new Set(opt.vychozi || ['aplikace']), texty: {} };
   const base = new URL('./', location.href).href;
   const odkaz = (o) => (akce && opt.nabidky?.[o.id] ? base + '#n=' + opt.nabidky[o.id].token : base);
   const akceText = akce ? `${akce.nazev} (${denAkce(akce.datum)}, ${S.cis.okres[akce.okres_kod]?.mesto || ''})` : '';
   const vypln = (t, o) => t.split('{oslovení}').join(K.vokativ(o.jmeno)).split('{odkaz}').join(odkaz(o)).split('{akce}').join(akceText)
-    .split('{co chybí}').join((CO_CHYBI[chybiKrok(o)] || '')).split('{email}').join(o.email);
+    .split('{co chybí}').join((CO_CHYBI[chybiKrok(o)] || '')).split('{email}').join(o.email).split('{text}').join(opt.text || '');
   const prijemci = (k) => osoby.filter((o) => !o.neoslovovat && ['prijata', 'aktivni'].includes(o.stav) && !ZP_DRUH[st.druh].vynech(o) && (k !== 'whatsapp' || (o.whatsapp_souhlas_at && !(st.druh === 'nabidka' && opt.nabidky?.[o.id]?.otevreno))));
   el.insertAdjacentHTML('beforeend', `<div class="potvrd-h zp-panel"><div class="zp-hl"><b>Poslat zprávu – vybráno ${osoby.length}</b><button type="button" class="btn o mini" data-zp-zavrit>Zavřít</button></div>
     ${druhy.length > 1 ? `<div class="zp-druh">${druhy.map((d) => `<label><input type="radio" name="zp-druh" value="${d}"${d === st.druh ? ' checked' : ''}> ${ZP_DRUH[d].t}</label>`).join('')}</div>` : ''}
-    <div class="zp-kanaly"><span>Kanály:</span>${Object.entries(KANALY).map(([k, t]) => `<label><input type="checkbox" data-kanal="${k}"${st.kanaly.has(k) ? ' checked' : ''}> ${t} <small data-pocet="${k}"></small></label>`).join('')}</div>
+    <div class="zp-kanaly"><span>Kanály:</span>${Object.entries(KANALY).filter(([kk]) => !opt.kanaly || opt.kanaly.includes(kk)).map(([k, t]) => `<label><input type="checkbox" data-kanal="${k}"${st.kanaly.has(k) ? ' checked' : ''}> ${t} <small data-pocet="${k}"></small></label>`).join('')}</div>
     <div class="zp-texty"></div><div class="zp-vynech pozn"></div>
     <div class="akce"><button type="button" class="btn mini" data-zp-odeslat>Odeslat vybranými kanály</button></div><div class="zp-vysledek"></div><div class="zp-wa"></div></div>`);
   const p = el.querySelector('.zp-panel');
@@ -798,7 +803,7 @@ function zpravaPanel(el, osoby, opt = {}) {
   const nahled = (k, o) => `<small>Náhled pro ${esc(o.jmeno)} ${esc(o.prijmeni)}:</small>${ZP_DRUH[st.druh][k][0] !== null ? `<b>${esc(vypln(vzor(k, 0), o))}</b>
 ` : ''}${esc(vypln(vzor(k, 1), o))}`;
   const kresli = () => {
-    Object.keys(KANALY).forEach((k) => (p.querySelector(`[data-pocet=${k}]`).textContent = `(${prijemci(k).length})`));
+    Object.keys(KANALY).forEach((k) => { const el = p.querySelector(`[data-pocet=${k}]`); if (el) el.textContent = `(${prijemci(k).length})`; });
     const prvni = prijemci([...st.kanaly][0] || 'aplikace')[0];
     p.querySelector('.zp-texty').innerHTML = [...st.kanaly].map((k) => `<fieldset class="zp-kanal"><legend>${KANALY[k]}</legend>
       ${ZP_DRUH[st.druh][k][0] !== null ? `<label>${k === 'email' ? 'Předmět' : 'Nadpis'}<input data-t="${k}" data-i="0" value="${esc(vzor(k, 0))}"></label>` : ''}
@@ -895,6 +900,8 @@ async function nactiAkce() {
   if (a.error) throw a.error; if (k.error) throw k.error;
   const n = await sb.from('akce_nabidka').select('*');
   S.nabidky = n.error ? [] : n.data || [];
+  const zp = await sb.from('akce_zprava').select('akce_id').eq('od_kancelare', false).is('precteno_kancelari', null);
+  S.noveOdpovedi = {}; (zp.error ? [] : zp.data || []).forEach((z) => (S.noveOdpovedi[z.akce_id] = (S.noveOdpovedi[z.akce_id] || 0) + 1));
   S.akce = (a.data || []).map((x) => { const klient = Array.isArray(x.klient) ? x.klient[0] || null : x.klient;
     return { ...x, klient, hledej: bezDiakritiky([x.nazev, x.adresa, klient?.nazev, S.cis.okres[x.okres_kod]?.mesto].join(' ')) }; });
   S.klienti = k.data || [];
@@ -936,7 +943,7 @@ async function vAkce(hlaska = '') {
     document.getElementById('ak-telo').innerHTML = l.length ? l.map((a) => { const s = stavAkce(a);
       return `<tr data-id="${a.id}" class="${s === 'dnes' ? 'ak-dnes' : ''}${s === 'probehla' || s === 'zrusena' ? ' ak-stara' : ''}">
       <td class="nw"><b>${denAkce(a.datum)}</b></td><td class="nw">${cas(a.sraz_cas)}${a.prace_od ? `<small>práce ${cas(a.prace_od)}–${cas(a.prace_do)}</small>` : ''}</td>
-      <td><b>${esc(a.nazev)}</b><small>${esc(a.adresa)}</small></td><td><span class="tag ${AK_STAV[s][1]}">${AK_STAV[s][0]}</span></td>
+      <td><b>${esc(a.nazev)}</b>${S.noveOdpovedi?.[a.id] ? ` <span class="tag t-r" title="Nepřečtené zprávy od hostesek">✉ ${S.noveOdpovedi[a.id]}</span>` : ''}<small>${esc(a.adresa)}</small></td><td><span class="tag ${AK_STAV[s][1]}">${AK_STAV[s][0]}</span></td>
       <td>${esc(a.klient?.nazev || '–')}</td><td>${esc(S.cis.okres[a.okres_kod]?.mesto || a.okres_kod)}</td><td class="nw">${obsazeniZn(a)}</td>
       <td class="nw">${a.uzaverka ? kdy(a.uzaverka) : '–'}</td></tr>`; }).join('')
       : `<tr><td colspan="8" class="prazdno">${vse ? 'Filtru žádná akce neodpovídá.' : 'Zatím žádná akce. Založte ji tlačítkem „+ Nová akce“.'}</td></tr>`;
@@ -973,7 +980,7 @@ async function fotkaAkce(cesta) {
   return (S.fotoUrl[cesta] = data?.signedUrl || '');
 }
 
-async function vAkceForm(a, hlaska = '') {
+async function vAkceForm(a, hlaska = '', opt = {}) {
   await ciselniky();
   if (!S.klienti) await nactiAkce();
   const nova = !a; a = a || { obleceni: 'klient', kontakt_vixen: { jmeno: S.jmeno }, kontakty_klient: [], pozadavky: {} };
@@ -988,7 +995,7 @@ async function vAkceForm(a, hlaska = '') {
     <h1>${nova ? 'Nová akce' : esc(a.nazev)}</h1>${zrusena ? '<span class="tag t-r">zrušená</span>' : probehla ? '<span class="tag t-b">proběhla</span>' : ''}</div>
    ${nova ? '' : `<p class="pozn ak-kdo">Založil(a): ${esc(kdoTxt(a.vytvoril, a.vytvoreno))}${a.zmenil && a.zmeneno !== a.vytvoreno ? ` · naposledy upravil(a): ${esc(kdoTxt(a.zmenil, a.zmeneno))}` : ''}</p>`}
    ${zrusena ? msg('Akce je zrušená: ' + esc(a.zruseni_duvod || '') + (a.zrusil ? ` (zrušil(a): ${esc(kdoTxt(a.zrusil))})` : ''), 'bad') : ''}${hlaska}
-   ${nova || zrusena ? '' : '<div id="ak-obs"></div>'}
+   ${nova || zrusena ? '' : '<div id="ak-obs"></div>'}${nova ? '' : '<div id="ak-zpr"></div>'}
    <form id="ak-f" class="ak-form" novalidate>
     <section class="card"><h2>Akce</h2>
      ${pole('nazev', 'Název akce', a.nazev, 'text', ' placeholder="např. Ochutnávka kávy v obchodním centru"')}
@@ -1033,6 +1040,7 @@ async function vAkceForm(a, hlaska = '') {
      ${zrusena ? '<button class="btn o mini" id="ak-obnov">Obnovit akci</button>' : '<button class="btn o mini" id="ak-zrus">Zrušit akci…</button>'}</div><div id="ak-krok"></div></section>`}`;
   zapniMenu();
   if (!nova && !zrusena) obsazeniSekce(a, probehla);
+  if (!nova) zpravySekce(a, opt.zmena);
   const f = document.getElementById('ak-f'), h = (id) => (document.getElementById('a-' + id)?.value || '').trim();
   document.getElementById('ak-zpet').onclick = () => vAkce();
   document.getElementById('a-adresa').oninput = (e) => (document.getElementById('a-mapa').innerHTML = mapa(e.target.value.trim()));
@@ -1102,6 +1110,11 @@ async function vAkceForm(a, hlaska = '') {
     const r = nova ? await sb.from('akce').insert(zaznam).select('id').single() : await sb.from('akce').update(zaznam).eq('id', a.id);
     if (r.error) return konec(chyba(r.error));
     const id = nova ? r.data.id : a.id;
+    // co se změnilo, co potvrzení musí vědět (čas, místo, oblečení)
+    const POLE_ZMENY = [['datum', 'datum', (v) => (v ? denAkce(v) : '–')], ['sraz_cas', 'sraz', (v) => cas(v) || '–'], ['sraz_misto', 'místo srazu', (v) => v || '–'], ['prace_od', 'začátek práce', (v) => cas(v) || '–'],
+      ['prace_do', 'konec práce', (v) => cas(v) || '–'], ['adresa', 'adresa', (v) => v || '–'], ['obleceni', 'oblečení', (v) => (v === 'vlastni' ? 'vlastní' : 'od klienta')], ['obleceni_popis', 'oblečení', (v) => v || '–']];
+    const norm = (p, v) => (/cas|prace/.test(p) ? cas(v) : String(v ?? ''));
+    const zmeny = nova ? [] : POLE_ZMENY.filter(([p]) => norm(p, a[p]) !== norm(p, zaznam[p])).map(([p, t, f]) => `${t}: nově ${f(zaznam[p])}`);
     // 3) fotka oblečení
     if (novaFotka) {
       const cesta = `${id}/obleceni-${Date.now()}.${(novaFotka.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`;
@@ -1112,7 +1125,8 @@ async function vAkceForm(a, hlaska = '') {
       if (u.error) return konec(chyba(u.error));
     }
     await nactiAkce();
-    vAkceForm(S.akce.find((x) => x.id === id), msg(nova ? 'Akce založená ✓' : 'Změny uložené ✓'));
+    const potvrzenych = nabidkyAkce({ id }).filter((x) => x.rozhodnuti === 'potvrzeno').length;
+    vAkceForm(S.akce.find((x) => x.id === id), msg(nova ? 'Akce založená ✓' : 'Změny uložené ✓' + (zmeny.length && potvrzenych ? ' Změnu pošlete potvrzeným níže v Zprávách k akci.' : '')), { zmena: zmeny.length && potvrzenych ? 'Důležitá změna – ' + [...new Set(zmeny)].join('; ') + '.' : '' });
   };
   if (nova) return;
   const krok = document.getElementById('ak-krok');
@@ -1229,6 +1243,50 @@ function poslatNabidku(el, osoby, info) {
     if (error) { e.target.disabled = false; return info(chyba(error)); }
     S.proAkci = null; S.vyber.clear(); await nactiAkce();
     vAkceForm(S.akce.find((x) => x.id === a.id), msg(`Nabídka odeslána do aplikace ${data.nove} lidem.${data.uz_meli ? ` ${data.uz_meli} ji už měli.` : ''}${data.vynechano ? ` Vynecháno ${data.vynechano} (neoslovovat / nepřijatí).` : ''} Komu ji v aplikaci neotevřou, můžete poslat WhatsApp.`));
+  };
+}
+
+// ---------- ZPRÁVY K AKCI (modul 2, etapa C): všem potvrzeným nebo jednomu, důležitá změna, kdo přečetl ----------
+async function zpravySekce(a, zmena = '') {
+  const box = document.getElementById('ak-zpr'); if (!box) return;
+  if (!S.lide.length) { try { await nactiLidi(); } catch {} }
+  const [z, p] = await Promise.all([sb.from('akce_zprava').select('*').eq('akce_id', a.id).order('vytvoreno'), sb.from('akce_zprava_precteni').select('zprava_id,osoba_id,precteno_at')]);
+  if (z.error) { box.innerHTML = msg('Zprávy se nepodařilo načíst: ' + esc(chyba(z.error)), 'bad'); return; }
+  const zpravy = z.data || [], precteni = (p.data || []).filter((x) => zpravy.some((y) => y.id === x.zprava_id));
+  const nab = nabidkyAkce(a), potvrzeni = nab.filter((n) => n.rozhodnuti === 'potvrzeno').map((n) => S.lide.find((x) => x.id === n.osoba_id)).filter(Boolean);
+  const kdoOs = (id) => S.lide.find((x) => x.id === id), jm = (o) => (o ? `${o.jmeno} ${o.prijmeni}` : '?');
+  const nove = zpravy.filter((x) => !x.od_kancelare && !x.precteno_kancelari).map((x) => x.id);
+  const radek = (x) => { const os = kdoOs(x.osoba_id), pr = precteni.filter((y) => y.zprava_id === x.id);
+    const komu = x.od_kancelare ? (x.osoba_id ? 'jen ' + jm(os) : 'všem potvrzeným') : 'kanceláři';
+    const cteni = !x.od_kancelare ? '' : x.osoba_id ? (pr.length ? 'přečteno ' + kdy(pr[0].precteno_at) : 'zatím nepřečteno')
+      : `přečetlo ${pr.length} z ${potvrzeni.length}${potvrzeni.length - pr.length > 0 ? ' · nepřečetli: ' + potvrzeni.filter((o) => !pr.some((y) => y.osoba_id === o.id)).map(jm).join(', ') : ''}`;
+    return `<div class="azp${x.od_kancelare ? '' : ' od-hostesky'}${x.dulezita ? ' dulezita' : ''}${nove.includes(x.id) ? ' nova' : ''}">
+      <div class="azp-hl"><b>${x.od_kancelare ? esc(kdoTxt(x.autor)) : esc(jm(os)) + ' (hosteska)'}</b> → ${esc(komu)} <small>${kdy(x.vytvoreno)}</small>${x.dulezita ? '<span class="azp-vykr" title="Důležitá změna">! Důležitá změna</span>' : ''}${nove.includes(x.id) ? '<span class="tag t-r">nová</span>' : ''}</div>
+      <p>${esc(x.text)}</p>${cteni ? `<small class="kdo">${esc(cteni)}</small>` : ''}</div>`; };
+  box.innerHTML = `<section class="card ak-zpravy"><h2>Zprávy k akci</h2>
+    <p class="pozn">Místo skupiny na Messengeru. Zprávy vidí jen potvrzení na akci; odpověď hostesky vidí jen kancelář.</p>
+    <div class="azp-seznam">${zpravy.length ? zpravy.map(radek).join('') : '<p class="mute">Zatím žádné zprávy.</p>'}</div>
+    <form id="azp-f" class="azp-f" novalidate>
+     <div class="azp-radek"><label>Komu <select id="azp-komu"><option value="">Všem potvrzeným (${potvrzeni.length})</option>
+      ${nab.map((n) => kdoOs(n.osoba_id)).filter(Boolean).sort((x, y) => x.prijmeni.localeCompare(y.prijmeni, 'cs')).map((o) => `<option value="${o.id}">jen ${esc(jm(o))}${potvrzeni.includes(o) ? '' : ' (nepotvrzená)'}</option>`).join('')}</select></label>
+      <label class="chk"><input type="checkbox" id="azp-dul"${zmena ? ' checked' : ''}> <span><b>Důležitá změna</b> (čas, místo, oblečení) – hosteska ji uvidí s červeným vykřičníkem</span></label></div>
+     <textarea id="azp-text" rows="3" placeholder="Zpráva pro potvrzené…">${esc(zmena)}</textarea>
+     <div class="akce"><button class="btn mini" type="submit">Odeslat do aplikace</button></div><div id="azp-msg"></div><div id="azp-kanaly"></div></form></section>`;
+  if (zmena) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (nove.length) sb.rpc('akce_zpravy_prectene_kancelari', { p_akce: a.id }).then(() => { if (S.noveOdpovedi) delete S.noveOdpovedi[a.id]; });
+  document.getElementById('azp-f').onsubmit = async (e) => {
+    e.preventDefault();
+    const text = document.getElementById('azp-text').value.trim(), komu = document.getElementById('azp-komu').value || null, dul = document.getElementById('azp-dul').checked;
+    if (!text) return chybaFormu(e.target, 'Napište text zprávy.');
+    if (!komu && !potvrzeni.length) return chybaFormu(e.target, 'Na akci zatím nikdo není potvrzený – napište jednomu člověku, nebo nejdřív potvrďte obsazení.');
+    const tl = e.target.querySelector('button[type=submit]'); tl.disabled = true;
+    const { error } = await sb.rpc('akce_zprava_posli', { p_akce: a.id, p_text: text, p_osoba: komu, p_dulezita: dul });
+    tl.disabled = false;
+    if (error) return chybaFormu(e.target, chyba(error));
+    const prijemci = komu ? [kdoOs(komu)] : potvrzeni;
+    await zpravySekce(a);
+    document.getElementById('azp-msg').innerHTML = msg(`Zpráva je v aplikaci (${komu ? jm(kdoOs(komu)) : potvrzeni.length + ' potvrzeným'}) ✓`) + '<button type="button" class="btn o mini" id="azp-dalsi">Upozornit i e-mailem / WhatsAppem…</button>';
+    document.getElementById('azp-dalsi').onclick = () => zpravaPanel(document.getElementById('azp-kanaly'), prijemci, { druhy: ['akce_zprava'], akce: a, nabidky: Object.fromEntries(nab.map((n) => [n.osoba_id, n])), text: (dul ? 'DŮLEŽITÁ ZMĚNA: ' : '') + text, kanaly: ['email', 'whatsapp'], vychozi: [] });
   };
 }
 

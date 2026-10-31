@@ -328,7 +328,7 @@ async function poPrihlaseni() {
   ukaz(cil);
 }
 async function nacti() {
-  const [o, p, n, d, oo, ff, sch, nab, zpr] = await Promise.all([
+  const [o, p, n, d, oo, ff, sch, nab, zpr, zak] = await Promise.all([
     sb.from('osoba').select('*').single(),
     sb.from('osoba_profil').select('*').maybeSingle(),
     sb.from('osoba_nastup').select('*').maybeSingle(),
@@ -338,7 +338,9 @@ async function nacti() {
     sb.rpc('parametr_dnes', { p_kod: 'registrace_schvalovat' }),
     sb.rpc('moje_nabidky', { p_oznacit: false }),
     sb.rpc('moje_zpravy'),
+    sb.rpc('moje_zpravy_akce', { p_oznacit: false }),
   ]);
+  S.zpravyAkce = Array.isArray(zak?.data) ? zak.data : [];
   S.zpravy = Array.isArray(zpr?.data) ? zpr.data : [];
   S.nabidky = Array.isArray(nab?.data) ? nab.data : [];
   S.okresy = (oo.data || []).map((x) => x.okres_kod);
@@ -387,7 +389,7 @@ function kroky() {
 }
 function navStav() {
   if (!S.osoba) return;
-  const nb = document.querySelector('#tabs button[data-v=nabidky]'), nove = noveNabidky().length;
+  const nb = document.querySelector('#tabs button[data-v=nabidky]'), nove = noveNabidky().length + noveZpravyAkce().length;
   if (nb) { nb.querySelector('i').textContent = nove || '✉'; nb.classList.toggle('dalsi', nove > 0); }
   const k = kroky(), ok = schvalena(), dalsi = k.find((x) => !x.hotovo && !x.volitelny);
   const prof = k.find((x) => x.id === 'profil'), sml = k.find((x) => x.id === 'smlouva');
@@ -494,6 +496,7 @@ function vPrehled() {
    <p class="mute">Vaše cesta k první akci – hotovo ${hotovych} z ${k.length}</p>
    <div class="prubeh"><div style="width:${Math.round((hotovych / k.length) * 100)}%"></div></div>
    ${noveNabidky().length ? `<div class="ted nab-karta"><b>Máte ${noveNabidky().length === 1 ? 'novou nabídku akce' : 'nové nabídky akcí (' + noveNabidky().length + ')'}</b>Podívejte se na podrobnosti a odpovězte – místa se obsazují rychle.<button class="btn" id="k-nab">Zobrazit nabídky →</button></div>` : ''}
+   ${dulezitaHtml()}
    ${zpravyHtml()}
    ${ted}
    ${plochaKarta()}
@@ -502,6 +505,7 @@ function vPrehled() {
      <span class="t"><b>${esc(x.t)}<span class="kdo ${x.kdo === 'vy' ? 'vy' : 'kanc'}">${x.kdo === 'vy' ? 'vy' : 'kancelář'}</span></b><small>${esc(x.popis)}</small></span></li>`).join('')}</ol>`;
   const tl = document.getElementById('dal'); if (tl) tl.onclick = () => ukaz(dalsi.v);
   const kn = document.getElementById('k-nab'); if (kn) kn.onclick = () => ukaz('nabidky');
+  const kd = document.getElementById('k-dul'); if (kd) kd.onclick = () => ukaz('nabidky');
   // zprávy od kanceláře: zobrazené = přečtené (štítek „nová“ zůstane do dalšího otevření)
   (S.zpravy || []).filter((z) => !z.precteno_at).forEach((z) => { z.precteno_at = new Date().toISOString(); sb.rpc('zprava_prectena', { p_id: z.id }).then(() => {}, () => {}); });
   $app.querySelectorAll('.zpr-dalsi').forEach((b) => (b.onclick = () => { b.closest('.zpr-box').classList.add('vse'); b.remove(); }));
@@ -517,6 +521,23 @@ function zpravyHtml() {
     <div class="zpr-hl"><b>${esc(z.predmet || 'Zpráva od kanceláře')}</b>${z.precteno_at ? '' : '<span class="tag t-w">nová</span>'}</div>
     <small>od: kancelář Vixen${z.od ? ' – ' + esc(z.od) : ''} · ${new Date(z.vytvoreno).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</small><p>${esc(z.text)}</p></div>`).join('')}
     ${l.length > 3 ? '<button class="btn o mini zpr-dalsi">Starší zprávy</button>' : ''}</div>`;
+}
+
+// ---------- ZPRÁVY K AKCI (modul 2, etapa C) ----------
+const noveZpravyAkce = () => (S.zpravyAkce || []).filter((z) => z.od_kancelare && !z.precteno);
+function dulezitaHtml() {
+  const d = noveZpravyAkce().filter((z) => z.dulezita); if (!d.length) return '';
+  const a = (S.nabidky || []).find((n) => n.akce.id === d[d.length - 1].akce_id)?.akce;
+  return `<div class="ted dul-karta"><b>! Důležitá změna${a ? ' k akci ' + esc(a.nazev) : ''}</b>${esc(d[d.length - 1].text)}<button class="btn" id="k-dul">Zobrazit zprávy k akci →</button></div>`;
+}
+function zpravyAkceHtml(n) {
+  const l = (S.zpravyAkce || []).filter((z) => z.akce_id === n.akce.id);
+  const smi = n.rozhodnuti === 'potvrzeno' && n.akce.stav !== 'zrusena';
+  if (!smi && !l.length) return '';
+  return `<div class="azp-box"><h3>Zprávy k akci</h3>${l.length ? l.map((z) => `<div class="azp-h${z.od_kancelare ? '' : ' moje'}${z.dulezita ? ' dulezita' : ''}${z.od_kancelare && !z.precteno ? ' nova' : ''}">
+      <small>${z.od_kancelare ? 'kancelář Vixen' + (z.od ? ' – ' + esc(z.od) : '') + (z.osobni ? ' · jen vám' : '') : 'vy → kanceláři'} · ${kdyKratce(z.vytvoreno)}</small>
+      ${z.dulezita ? '<span class="azp-vykr">! Důležitá změna</span>' : ''}<p>${esc(z.text)}</p></div>`).join('') : '<p class="mute">Zatím žádné zprávy. Změny k akci (čas, místo, oblečení) uvidíte tady.</p>'}
+    ${smi ? `<form class="azp-f" data-akce="${n.akce.id}"><textarea rows="2" placeholder="Napsat kanceláři (např. potvrzení, dotaz)…"></textarea><button class="btn o mini">Odeslat kanceláři</button></form><p class="pozn">Vaši zprávu uvidí jen kancelář.</p>` : ''}</div>`;
 }
 
 // ---------- NABÍDKY AKCÍ (modul 2, etapa B) ----------
@@ -541,6 +562,15 @@ async function vNabidky(hlaska = '') {
   const l = [...S.nabidky].sort((a, b) => (aktivni(b) - aktivni(a)) || (a.akce.datum < b.akce.datum ? -1 : 1) * (aktivni(a) ? 1 : -1));
   $app.innerHTML = `<h1>Nabídky akcí</h1>${hlaska}
    ${l.length ? l.map(kartaNabidky).join('') : '<div class="card"><p>Zatím pro vás nemáme žádnou nabídku. Jakmile bude akce ve vašem městě, uvidíte ji tady.</p><p class="mute">Tip: přidejte si Vixen na plochu telefonu, ať vám nic neuteče.</p></div>'}`;
+  if (noveZpravyAkce().length) sb.rpc('moje_zpravy_akce', { p_oznacit: true }).then(({ data: z }) => { if (Array.isArray(z)) { S.zpravyAkce = z; navStav(); } }, () => {});
+  $app.querySelectorAll('.azp-f').forEach((fm) => (fm.onsubmit = async (e) => {
+    e.preventDefault(); const t = fm.querySelector('textarea').value.trim(); if (!t) return;
+    fm.querySelector('button').disabled = true;
+    const { error: er } = await sb.rpc('akce_zprava_posli', { p_akce: fm.dataset.akce, p_text: t });
+    if (er) { fm.querySelector('button').disabled = false; return fm.insertAdjacentHTML('beforeend', msg(esc(chybaText(er)), 'bad')); }
+    const { data: z } = await sb.rpc('moje_zpravy_akce', { p_oznacit: true }); if (Array.isArray(z)) S.zpravyAkce = z;
+    vNabidky(msg('Zprávu jsme poslali kanceláři ✓'));
+  }));
   $app.querySelectorAll('.nab-karta-a').forEach((el) => {
     const n = S.nabidky.find((x) => x.id === el.dataset.id);
     el.querySelectorAll('button[data-o]').forEach((b) => (b.onclick = async () => {
@@ -586,7 +616,7 @@ function kartaNabidky(n) {
      ${a.odmena ? `<dt>Odměna</dt><dd>${esc(a.odmena)}</dd>` : ''}
      ${a.uzaverka && aktivni(n) && !n.rozhodnuti && !zav ? `<dt>Odpovězte do</dt><dd>${kdyKratce(a.uzaverka)}</dd>` : ''}
      ${a.poznamka ? `<dt>Poznámka</dt><dd>${esc(a.poznamka)}</dd>` : ''}</dl>
-    ${stav}</article>`;
+    ${stav}${zpravyAkceHtml(n)}</article>`;
 }
 // otevřený osobní odkaz bez přihlášení: krátce co to je, přihlášení, rada přidat na plochu
 function vOdkazNabidky() {
