@@ -865,6 +865,23 @@ function zpravaPanel(el, osoby, opt = {}) {
 
 
 // ---------- AKCE (modul 2, etapa A): seznam, založení, úprava, kopie, zrušení ----------
+
+// Bloky na stránce akce jdou sbalit kliknutím na nadpis. Které bloky má kdo sbalené, si pamatuje prohlížeč (pro všechny akce stejně).
+const AK_SBAL = 'vixen_akce_sbalene';
+const akSbalene = () => { try { return JSON.parse(localStorage.getItem(AK_SBAL) || '[]'); } catch { return []; } };
+const akSbalUloz = () => { try { localStorage.setItem(AK_SBAL, JSON.stringify([...$app.querySelectorAll('section.sbal.sbaleno')].map((x) => x.dataset.sbal))); } catch {} };
+function akSbal(nova) {
+  const ulozene = nova ? [] : akSbalene();
+  $app.querySelectorAll('section.card > h2').forEach((h2) => {
+    const sec = h2.parentElement; if (sec.classList.contains('sbal')) return;
+    sec.dataset.sbal = (h2.firstChild?.textContent || '').trim(); sec.classList.add('sbal');
+    // blok s novou hláškou nebo otevřeným panelem zprávy zůstane rozbalený
+    sec.classList.toggle('sbaleno', ulozene.includes(sec.dataset.sbal) && !sec.querySelector('.msg, .zp-panel'));
+    h2.tabIndex = 0; h2.title = 'Sbalit / rozbalit';
+    h2.onclick = (e) => { if (e.target.closest('a, button, input')) return; sec.classList.toggle('sbaleno'); akSbalUloz(); };
+    h2.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); h2.click(); } };
+  });
+}
 // Akce = jeden den, jeden sraz; vícedenní akce se zakládá kopií. Klient s fakturačními údaji se vybírá znovu.
 const DEN_T = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
 const isoDen = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -1000,7 +1017,8 @@ async function vAkceForm(a, hlaska = '', opt = {}) {
     .map((o) => `<option value="${o.kod}"${o.kod === a.okres_kod ? ' selected' : ''}>${esc(o.mesto)}</option>`).join('')}</optgroup>`).join('');
   const uzav = a.uzaverka ? isoDen(new Date(a.uzaverka)) + 'T' + new Date(a.uzaverka).toTimeString().slice(0, 5) : '';
   $app.innerHTML = `${await menu('akce')}<div class="ak-hlava"><button class="btn o mini" id="ak-zpet">← Akce</button>
-    <h1>${nova ? 'Nová akce' : esc(a.nazev)}</h1>${zrusena ? '<span class="tag t-r">zrušená</span>' : probehla ? '<span class="tag t-b">proběhla</span>' : ''}</div>
+    <h1>${nova ? 'Nová akce' : esc(a.nazev)}</h1>${zrusena ? '<span class="tag t-r">zrušená</span>' : probehla ? '<span class="tag t-b">proběhla</span>' : ''}
+   <span class="ak-sbal-tl"><button class="btn o mini" type="button" id="ak-sbal-vse">Sbalit vše</button><button class="btn o mini" type="button" id="ak-rozbal-vse">Rozbalit vše</button></span></div>
    ${nova ? '' : `<p class="pozn ak-kdo">Založil(a): ${esc(kdoTxt(a.vytvoril, a.vytvoreno))}${a.zmenil && a.zmeneno !== a.vytvoreno ? ` · naposledy upravil(a): ${esc(kdoTxt(a.zmenil, a.zmeneno))}` : ''}</p>`}
    ${zrusena ? msg('Akce je zrušená: ' + esc(a.zruseni_duvod || '') + (a.zrusil ? ` (zrušil(a): ${esc(kdoTxt(a.zrusil))})` : ''), 'bad') : ''}${hlaska}
    ${nova || zrusena ? '' : '<div id="ak-obs"></div>'}${nova ? '' : '<div id="ak-zpr"></div>'}
@@ -1047,6 +1065,9 @@ async function vAkceForm(a, hlaska = '', opt = {}) {
      <button class="btn o mini" id="ak-kop1">Kopírovat na další den</button><button class="btn o mini" id="ak-kopx">Kopírovat na jiné datum…</button>
      ${zrusena ? '<button class="btn o mini" id="ak-obnov">Obnovit akci</button>' : '<button class="btn o mini" id="ak-zrus">Zrušit akci…</button>'}</div><div id="ak-krok"></div></section>`}`;
   zapniMenu();
+  akSbal(nova);
+  ['ak-obs', 'ak-zpr'].forEach((id) => { const el = document.getElementById(id); if (el) new MutationObserver(() => akSbal(nova)).observe(el, { childList: true }); });
+  [['ak-sbal-vse', true], ['ak-rozbal-vse', false]].forEach(([id, sbalit]) => (document.getElementById(id).onclick = () => { $app.querySelectorAll('section.sbal').forEach((x) => x.classList.toggle('sbaleno', sbalit)); akSbalUloz(); }));
   if (!nova && !zrusena) obsazeniSekce(a, probehla);
   if (!nova) zpravySekce(a, opt.zmena);
   const f = document.getElementById('ak-f'), h = (id) => (document.getElementById('a-' + id)?.value || '').trim();
@@ -1092,6 +1113,7 @@ async function vAkceForm(a, hlaska = '', opt = {}) {
       if (h(`kk${i}_email`)) { const c = K.emailChyba(h(`kk${i}_email`)); if (c) ch[`kk${i}_email`] = c; } });
     if (Object.keys(ch).length) {
       Object.entries(ch).forEach(([k, t]) => { const x = f.querySelector(`[data-f=${k}]`); x.classList.add('chyba'); x.querySelector('.err').textContent = t; });
+      f.querySelectorAll('.fld.chyba').forEach((x) => x.closest('section')?.classList.remove('sbaleno'));
       return f.querySelector('.fld.chyba').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     const tl = f.querySelector('button[type=submit]'); tl.disabled = true;

@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#23201b">
 <meta name="robots" content="noindex, nofollow">
 <title>Vixen – kancelář</title>
-<link rel="stylesheet" href="styles.css?v=123">
+<link rel="stylesheet" href="styles.css?v=128">
 <style>
 main{max-width:760px}
 .tik{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:#fff;cursor:pointer}
@@ -167,6 +167,9 @@ details.vf summary::-webkit-details-marker{display:none}
 .zp-vynech{margin:6px 0}
 /* akce */
 .ak-hlava{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.ak-hlava h1{margin:0}
+.ak-sbal-tl{margin-left:auto;display:flex;gap:6px}
+section.sbal>h2{cursor:pointer;user-select:none}section.sbal>h2::before{content:'▾';display:inline-block;width:1.1em;color:var(--mute)}
+section.sbal.sbaleno>h2::before{content:'▸'}section.sbal.sbaleno>h2{margin-bottom:0!important}section.sbal.sbaleno>:not(h2){display:none!important}
 .ak-form{max-width:900px}.ak-form .card h2{margin:0 0 10px;font-size:18px}.ak-form h3{font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:14px 0 4px}
 .ak-2,.ak-3{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.ak-3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .ak-kontakt{border-top:1px solid #f0ebe1;padding-top:8px;margin-top:8px}
@@ -196,11 +199,11 @@ details.vf summary::-webkit-details-marker{display:none}
 <div class="top"><b>VIXEN · KANCELÁŘ</b><span id="kdo"></span><button id="odhlasit" class="hidden">Odhlásit</button></div>
 <div class="env" id="env"></div>
 <main id="app"><p class="mute">Načítám…</p></main>
-<script src="vendor/supabase.js?v=123"></script>
-<script src="config.js?v=123"></script>
-<script src="verze.js?v=123"></script>
-<script src="demo.js?v=123"></script>
-<script src="kontroly.js?v=123"></script>
-<script src="kancelar.js?v=123"></script>
+<script src="vendor/supabase.js?v=128"></script>
+<script src="config.js?v=128"></script>
+<script src="verze.js?v=128"></script>
+<script src="demo.js?v=128"></script>
+<script src="kontroly.js?v=128"></script>
+<script src="kancelar.js?v=128"></script>
 </body>
 </html>
