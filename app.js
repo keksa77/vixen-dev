@@ -124,6 +124,7 @@ const oblastVyber = () => [...(S.oblast || [])];
 // ---------- start ----------
 // číselníky se načítají na pozadí – úvod se ukáže hned; registrace a přihlášený obsah na ně počkají
 async function start() {
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   S.cisP = Promise.all([
     sb.from('kraj').select('kod,nazev').order('poradi'),
     sb.from('okres').select('kod,mesto,kraj_kod').order('poradi'),
@@ -501,6 +502,7 @@ function vPrehled() {
    ${zpravyHtml()}
    ${ted}
    ${plochaKarta()}
+   <div id="push-karta"></div>
    <ol class="cesta">${k.map((x, i) => `<li class="${stav(x)}"${x.v && schvalena() && (x.id !== 'smlouva' || vyzvan()) ? ` data-v="${x.v}"` : ''}>
      <span class="c">${x.hotovo ? '✓' : i + 1}</span>
      <span class="t"><b>${esc(x.t)}<span class="kdo ${x.kdo === 'vy' ? 'vy' : 'kanc'}">${x.kdo === 'vy' ? 'vy' : 'kancelář'}</span></b><small>${esc(x.popis)}</small></span></li>`).join('')}</ol>`;
@@ -508,6 +510,7 @@ function vPrehled() {
   const kn = document.getElementById('k-nab'); if (kn) kn.onclick = () => ukaz('nabidky');
   const kd = document.getElementById('k-dul'); if (kd) kd.onclick = () => ukaz('nabidky');
   zapniNaMiste($app, () => vPrehled());
+  pushKarta(document.getElementById('push-karta'), false);
   // zprávy od kanceláře: zobrazené = přečtené (štítek „nová“ zůstane do dalšího otevření)
   (S.zpravy || []).filter((z) => !z.precteno_at).forEach((z) => { z.precteno_at = new Date().toISOString(); sb.rpc('zprava_prectena', { p_id: z.id }).then(() => {}, () => {}); });
   $app.querySelectorAll('.zpr-dalsi').forEach((b) => (b.onclick = () => { b.closest('.zpr-box').classList.add('vse'); b.remove(); }));
@@ -523,6 +526,55 @@ function zpravyHtml() {
     <div class="zpr-hl"><b>${esc(z.predmet || 'Zpráva od kanceláře')}</b>${z.precteno_at ? '' : '<span class="tag t-w">nová</span>'}</div>
     <small>od: kancelář Vixen${z.od ? ' – ' + esc(z.od) : ''} · ${new Date(z.vytvoreno).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</small><p>${esc(z.text)}</p></div>`).join('')}
     ${l.length > 3 ? '<button class="btn o mini zpr-dalsi">Starší zprávy</button>' : ''}</div>`;
+}
+
+// ---------- UPOZORNĚNÍ V TELEFONU (modul 2, etapa E): Web Push ----------
+// Na Androidu fungují v prohlížeči i z plochy, na iPhonu jen v aplikaci přidané na plochu (iOS 16.4+).
+const pushPodpora = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const iPhone = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const b64naBajty = (t) => { const p = '='.repeat((4 - (t.length % 4)) % 4), r = atob((t + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map((c) => c.charCodeAt(0))); };
+async function pushStav() {
+  if (!pushPodpora()) return iPhone() && !naPlose() ? 'ios_plocha' : 'nepodporuje';
+  if (Notification.permission === 'denied') return 'zakazano';
+  try { const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && (await reg.pushManager.getSubscription()); return sub ? 'zapnuto' : 'vypnuto'; } catch { return 'vypnuto'; }
+}
+async function pushZapni() {
+  if ((await Notification.requestPermission()) !== 'granted') throw new Error('Upozornění jste v telefonu nepovolili. Povolit je jde v nastavení prohlížeče u stránky Vixen.');
+  const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
+  const { data, error } = await sb.functions.invoke('oznameni-poslat', { body: { akce: 'klic' } });
+  if (error || !data?.verejny) throw new Error('Upozornění se teď nepodařilo zapnout – zkuste to prosím později.');
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64naBajty(data.verejny) });
+  const { error: e2 } = await sb.rpc('push_prihlas', { p_odber: sub.toJSON(), p_prohlizec: navigator.userAgent.slice(0, 200) });
+  if (e2) throw e2;
+}
+async function pushVypni() {
+  const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && (await reg.pushManager.getSubscription());
+  if (sub) { await sb.rpc('push_odhlas', { p_endpoint: sub.endpoint }); await sub.unsubscribe(); }
+}
+// karta na Přehledu (jen když upozornění nejsou zapnutá) / sekce v Profilu (vždy, se zapnutím i vypnutím)
+async function pushKarta(el, profil) {
+  if (!el) return;
+  const st = await pushStav();
+  if (!profil && (st === 'zapnuto' || st === 'nepodporuje')) { el.innerHTML = ''; return; }
+  const TEXT = {
+    vypnuto: ['Zapněte si upozornění', 'Nové nabídky, potvrzení účasti a změny k akci vám přijdou jako upozornění v telefonu – nic vám neuteče.', 'Zapnout upozornění'],
+    zapnuto: ['Upozornění v telefonu jsou zapnutá ✓', 'Nové nabídky, potvrzení a změny k akci dostáváte jako upozornění v tomto telefonu.', 'Vypnout upozornění'],
+    zakazano: ['Upozornění jsou v telefonu zakázaná', 'Povolte je v nastavení prohlížeče (u stránky Vixen → Oznámení → Povolit) a pak je tu zapněte.', ''],
+    ios_plocha: ['Upozornění na iPhonu', 'Na iPhonu upozornění fungují jen v aplikaci přidané na plochu. Přidejte si Vixen na plochu, otevřete ho z ikony a zapněte upozornění tady.', 'Jak přidat na plochu'],
+    nepodporuje: ['Upozornění v telefonu', 'Tento prohlížeč upozornění neumí. Důležité zprávy vám pošleme e-mailem.', ''],
+  }[st];
+  el.innerHTML = `<div class="card push-karta ${st}"><b>${TEXT[0]}</b><p class="mute">${TEXT[1]}</p>${TEXT[2] ? `<button class="btn${st === 'zapnuto' ? ' o' : ''}" id="push-tl">${TEXT[2]}</button>` : ''}<div class="push-msg"></div></div>`;
+  const tl = el.querySelector('#push-tl'); if (!tl) return;
+  tl.onclick = async () => {
+    if (st === 'ios_plocha') return ukaz('instalace');
+    tl.disabled = true;
+    try {
+      await (st === 'zapnuto' ? pushVypni() : pushZapni()); await pushKarta(el, profil);
+      const t = msg(st === 'zapnuto' ? 'Upozornění jsou vypnutá.' : 'Hotovo ✓ Upozornění máte zapnutá.'), m = el.querySelector('.push-msg');
+      if (m) m.innerHTML = t; else el.innerHTML = '<div class="push-msg">' + t + '</div>';
+    }
+    catch (e) { tl.disabled = false; el.querySelector('.push-msg').innerHTML = msg(esc(e.message || chybaText(e)), 'bad'); }
+  };
 }
 
 // ---------- DEN AKCE (modul 2, etapa D): připomenutí v aplikaci a „Jsem na místě“ ----------
@@ -699,6 +751,7 @@ function vProfil() {
   const p = S.profil || {};
   const k = ['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((x) => ({ kod: x, nazev: x }));
   $app.innerHTML = `<h1>Profil</h1><p class="mute">Pomůže nám vybrat vhodnou akci. <span class="mute">(rozsah polí upřesní Vixen)</span></p>
+   <div id="push-profil"></div>
   <div class="card" id="fotky"></div>
   <form id="f" class="card" novalidate>
    <div class="row">${pole('vyska', 'Výška (cm)', p.vyska_cm ?? '', { typ: 'number', im: 'numeric' })}${pole('bota', 'Bota (EU)', p.bota_eu ?? '', { typ: 'number', im: 'decimal' })}</div>
@@ -712,7 +765,7 @@ function vProfil() {
    <button class="btn" type="submit">Uložit profil</button></form>`;
   zapniOblast();
   K.jazykyZapni(document.getElementById('f'));
-  fotkyBlok();
+  fotkyBlok(); pushKarta(document.getElementById('push-profil'), true);
   const kontrola = () => ({
     vyska: val('vyska') && (val('vyska') < 120 || val('vyska') > 220) ? 'Výška 120–220 cm.' : '',
     bota: val('bota') && (val('bota') < 30 || val('bota') > 50) ? 'Velikost bot 30–50.' : '',

@@ -284,6 +284,7 @@ const DUVOD = { nevyhovuje: 'nevyhovuje požadavkům', nespolehliva: 'nespolehli
   duplicita: 'duplicitní registrace', pauza: 'pauza (studium, mateřská…)', bez_prace: 'dlouho bez práce', jine: 'jiný důvod (viz poznámka)' };
 const sDuvodem = (stav) => stav === 'odmitnuta' || stav === 'neaktivni';
 const duvodVolba = (vybrany = '') => `<select class="duvod"><option value="">– vyberte důvod –</option>${Object.entries(DUVOD).map(([k, v]) => `<option value="${k}"${k === vybrany ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+const zvonekZn = (o) => (S.pushOsoby?.has(o.id) ? ' <span class="zvonek" title="Má zapnutá upozornění v telefonu">🔔</span>' : '');
 const neoslovovatZn = (o) => (o.neoslovovat ? ' <span class="tag t-r" title="Neoslovovat – hromadné akce a připomínky tohoto člověka vynechají">neoslovovat</span>' : '');
 // změna stavu (i hromadně) – u odmítnuté/neaktivní s důvodem; neoslovovat: true/false/undefined (= beze změny)
 const zmenStavDb = (ids, stav, duvod, neoslovovat) => sb.rpc('zmen_stav', { p_osoby: ids, p_stav: stav, p_duvod: sDuvodem(stav) ? duvod || null : null, p_neoslovovat: neoslovovat ?? null });
@@ -486,6 +487,8 @@ async function nactiLidi() {
   ]);
   if (a.error) throw a.error;
   const stav = Object.fromEntries((b.data || []).map((x) => [x.osoba_id, x]));
+  const po = await sb.from('push_odber').select('osoba_id').eq('aktivni', true);
+  S.pushOsoby = new Set((po.error ? [] : po.data || []).map((x) => x.osoba_id));
   const jeden = (x) => (Array.isArray(x) ? x[0] || null : x);
   S.lide = (a.data || []).map((o) => {
     const p = jeden(o.osoba_profil), s = stav[o.id] || {}, fotky = [...(o.osoba_foto || [])].sort((x, y) => x.poradi - y.poradi), k = jeden(o.osoba_kancelar) || {};
@@ -650,7 +653,7 @@ function vykresliTabulku() {
     return `<tr data-id="${o.id}"${S.vyber.has(o.id) ? ' class="vybran"' : ''}>
      <td><input type="checkbox" class="vyb" ${S.vyber.has(o.id) ? 'checked' : ''}></td>
      <td>${nahled(o)}</td>
-     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}${jinaAkceTenDen(o) ? ' <span class="tag t-r">jiná akce tento den</span>' : ''}${nedorazil(o) ? ` <span class="tag t-r" title="Kolikrát nedorazil/a na potvrzenou akci">nedorazil/a ${nedorazil(o)}×</span>` : ''}<small>${esc(o.obec || '')}</small></td>
+     <td><b>${esc(o.prijmeni)} ${esc(o.jmeno)}</b>${zvonekZn(o)}${neoslovovatZn(o)}${S.proAkci && S.nabidky.some((n) => n.akce_id === S.proAkci.id && n.osoba_id === o.id) ? ' <span class="tag t-g">nabídnuto</span>' : ''}${jinaAkceTenDen(o) ? ' <span class="tag t-r">jiná akce tento den</span>' : ''}${nedorazil(o) ? ` <span class="tag t-r" title="Kolikrát nedorazil/a na potvrzenou akci">nedorazil/a ${nedorazil(o)}×</span>` : ''}<small>${esc(o.obec || '')}</small></td>
      <td><span class="tag ${STAV_O[o.stav][1]}"${o.duvod ? ` title="Důvod: ${esc(DUVOD[o.duvod] || o.duvod)}"` : ''}>${STAV_O[o.stav][0]}</span>${stavKdo(o, true)}${o.duvod ? `<small>${esc(DUVOD[o.duvod] || o.duvod)}</small>` : ''}</td>
      <td><a href="tel:${esc(o.telefon)}" class="tel">${esc(o.telefon)}</a><small>${esc((o.kanal_kontaktu || []).map((z) => KANAL[z] || z).join(', '))}</small></td>
      <td title="${esc(o.okresy.map((k) => S.cis.okres[k]?.mesto || k).join(', '))}">${esc(mesta.slice(0, 3).join(', '))}${mesta.length > 3 ? ` +${mesta.length - 3}` : ''}<small>${esc(kr.slice(0, 2).join(', '))}${kr.length > 2 ? ` +${kr.length - 2}` : ''}</small></td>
@@ -1209,7 +1212,7 @@ async function obsazeniSekce(a, probehla, hlaska = '') {
         : n.prichod === 'nedorazila' ? `<td class="nw"><b class="no">nedorazil/a</b> ${kdoZn(n.prichod_kdo, n.prichod_at, x)}</td>`
         : pozde ? `<td class="nw"><b class="no">po srazu není na místě</b><a class="btn mini" href="tel:${esc(x.telefon)}">📞 Zavolat</a></td>` : `<td class="mute nw">${a.datum === dnesIso() ? 'čeká se (sraz ' + cas(a.sraz_cas) + ')' : a.datum < dnesIso() ? 'neoznačeno' : 'v den akce'}</td>`;
       const prichodTl = !den ? '' : `${n.prichod !== 'na_miste' ? '<button class="btn mini" data-p="na_miste">Dorazil/a</button> ' : ''}${n.prichod !== 'nedorazila' ? '<button class="btn o mini" data-p="nedorazila">Nedorazil/a</button> ' : ''}${n.prichod ? '<button class="btn o mini" data-p="">Vrátit příchod</button>' : ''}`;
-      return `<tr data-n="${n.id}"${pozde ? ' class="ak-pozde"' : ''}><td>${nahled(x)}</td><td><b>${esc(x.prijmeni)} ${esc(x.jmeno)}</b><small><a class="tel" href="tel:${esc(x.telefon)}">${esc(x.telefon)}</a></small></td>
+      return `<tr data-n="${n.id}"${pozde ? ' class="ak-pozde"' : ''}><td>${nahled(x)}</td><td><b>${esc(x.prijmeni)} ${esc(x.jmeno)}</b>${zvonekZn(x)}<small><a class="tel" href="tel:${esc(x.telefon)}">${esc(x.telefon)}</a></small></td>
        <td><span class="tag ${NAB_STAV[s][1]}">${NAB_STAV[s][0]}</span>${n.rozhodnuti ? kdoZn(n.rozhodl, n.rozhodnuti_at) : n.odpoved ? `<small class="kdo">odpověděla hosteska · ${kdy(n.odpoved_at)}</small>` : kdoZn(n.odeslal, n.odeslano, null, 'nabídku poslal(a): ')}${n.odhlaseno_at && !n.rozhodnuti ? `<small class="no">hosteska se odhlásila po potvrzení · ${kdy(n.odhlaseno_at)}</small>` : ''}</td>
        ${prichodTd}<td class="nw">${otevr(n)}${n.whatsapp_at ? `<small>WhatsApp ${kdy(n.whatsapp_at)}</small>` : ''}</td>
        <td>${x.dpp ? esc(DPP_TXT[x.dpp] || x.dpp) : x.smlouva_vyzva_at ? '<span class="mute">vyzván/a, zatím bez smlouvy</span>' : '<span class="mute">–</span>'}</td>
@@ -1358,6 +1361,7 @@ async function vDetailOsoby(id) {
     <label class="chk"><input type="checkbox" id="det-neosl"${o.neoslovovat ? ' checked' : ''}> <span>Neoslovovat – hromadné akce a připomínky tohoto člověka vynechají</span></label>
     <div class="fld"><label>Interní poznámka (uchazeč ji neuvidí)</label><textarea id="det-pozn" rows="3">${esc(o.pozn)}</textarea></div>
     <button class="btn" type="submit">Uložit</button></form></section>
+   <section><h3>Upozornění v telefonu</h3><div id="det-push" class="mute">Načítám…</div></section>
    <section><h3>Zprávy hostesce</h3>
     ${o.neoslovovat ? '<p class="mute">Neoslovovat – zprávy se neposílají.</p>' : '<div class="akce"><button class="btn o mini" id="z-zprava">Poslat zprávu…</button></div><p class="pozn">Vyberete kanály (aplikace, e-mail, WhatsApp) a pro každý se připraví text – připomínka sama doplní, co člověku chybí.</p><div id="z-panel"></div>'}
     <div id="z-msg"></div><div id="det-zpravy" class="mute">Načítám…</div></section>
@@ -1388,12 +1392,22 @@ async function vDetailOsoby(id) {
     d.querySelector('#det-f').insertAdjacentHTML('afterbegin', msg('Uloženo ✓'));
   };
   const zb = d.querySelector('#z-zprava'); if (zb) zb.onclick = () => zpravaPanel(d.querySelector('#z-panel'), [o], { hotovo: () => detailZpravy(o) });
-  detailZpravy(o);
+  detailZpravy(o); detailPush(o);
   if (S.smlouvy) detailSmlouva(o);
   if (S.vedeni || S.tbdb) detailHistorie(o);
 }
 
 const ZPRAVA_TYP = { vlastni: 'zpráva od kanceláře', nabidka: 'nabídka akce', whatsapp_nabidka: 'nabídka akce', whatsapp_upozorneni: 'upozornění (odesláno ručně)', schvaleno: 'schválení registrace', pripominka_prihlaseni: 'připomínka – přihlásit se', pripominka_profil: 'připomínka – profil', pripominka_udaje: 'připomínka – údaje pro smlouvu', pripominka_podpis: 'připomínka – podpis smlouvy' };
+const OZN_TYP = { nabidka: 'nová nabídka', potvrzeno: 'potvrzení účasti', akce_zprava: 'zpráva k akci', zprava: 'zpráva od kanceláře', pripominka_zitra: 'připomenutí den předem', pripominka_dnes: 'připomenutí v den akce' };
+const EMAIL_VYS = { odeslano: 'e-mail odeslán', bez_smtp: 'e-mail neodešel – SMTP není nastavené', vyvoj_neodeslano: 'e-mail: VÝVOJ – neodesláno', chyba: 'e-mail: chyba' };
+async function detailPush(o) {
+  const box = document.getElementById('det-push'); if (!box) return;
+  const [po, oz] = await Promise.all([sb.from('push_odber').select('prohlizec,aktivni,vytvoreno,posledni_uspech,posledni_chyba').eq('osoba_id', o.id),
+    sb.from('oznameni').select('typ,titulek,vytvoreno,zpracovano_at,push_doruceno,email_vysledek').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }).limit(10)]);
+  const zar = (po.data || []).filter((x) => x.aktivni);
+  box.innerHTML = `<p>${zar.length ? `<b class="ok">zapnutá</b> – ${zar.length} zařízení${zar[0].posledni_uspech ? ', naposledy doručeno ' + kdy(zar[0].posledni_uspech) : ''}` : '<b>vypnutá</b> – důležité věci (nabídka, potvrzení, důležitá změna, připomenutí) dostane e-mailem'}</p>
+    ${(oz.data || []).length ? `<ul class="hist">${oz.data.map((z) => `<li><b>${kdy(z.vytvoreno)}</b> – ${esc(OZN_TYP[z.typ] || z.typ)}: ${esc(z.titulek)} · ${!z.zpracovano_at ? 'čeká na odeslání' : z.push_doruceno ? 'doručeno do telefonu' : esc(EMAIL_VYS[z.email_vysledek] || 'do telefonu nedoručeno')}</li>`).join('')}</ul>` : '<p class="mute">Zatím žádná upozornění.</p>'}`;
+}
 async function detailZpravy(o) {
   const box = document.getElementById('det-zpravy'); if (!box) return;
   const { data, error } = await sb.from('osoba_zprava').select('typ,kanal,predmet,vysledek,chyba,adresat,vytvoreno,precteno_at,kdo').eq('osoba_id', o.id).order('vytvoreno', { ascending: false }).limit(10);

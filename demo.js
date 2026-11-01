@@ -100,6 +100,10 @@ db.azp = []; db.azpP = [];
   db.azp.push({ id: 'azp1', akce_id: 'ak1', osoba_id: null, od_kancelare: true, autor: 'demo-ladka', text: 'Dobrý den, sraz je u vchodu B (u lékárny), ne u hlavního vchodu.', dulezita: true, precteno_kancelari: null, vytvoreno: new Date(TED - 5 * 3600000).toISOString() });
   pot.slice(0, 2).forEach((n) => db.azpP.push({ zprava_id: 'azp1', osoba_id: n.osoba_id, precteno_at: new Date(TED - 4 * 3600000).toISOString() }));
   if (pot[0]) db.azp.push({ id: 'azp2', akce_id: 'ak1', osoba_id: pot[0].osoba_id, od_kancelare: false, autor: null, text: 'Děkuji, budu tam v 8:20.', dulezita: false, precteno_kancelari: null, vytvoreno: new Date(TED - 3 * 3600000).toISOString() }); }
+// upozornění v telefonu: zhruba třetina aktivních lidí je má zapnutá; u potvrzených oznámení z fronty
+db.push = db.osoba.filter((o, i) => ['prijata', 'aktivni'].includes(o.stav) && i % 3 === 0).map((o) => ({ osoba_id: o.id, prohlizec: 'Chrome Android (ukázka)', aktivni: true, vytvoreno: new Date(TED - 9 * DEN).toISOString(), posledni_uspech: new Date(TED - DEN).toISOString(), posledni_chyba: null }));
+db.ozn = db.nabidka.filter((n) => n.rozhodnuti === 'potvrzeno').map((n) => { const ma = db.push.some((p) => p.osoba_id === n.osoba_id);
+  return { osoba_id: n.osoba_id, typ: 'potvrzeno', titulek: 'Účast potvrzena ✓', vytvoreno: new Date(TED - 10 * 3600000).toISOString(), zpracovano_at: new Date(TED - 10 * 3600000 + 60000).toISOString(), push_doruceno: ma ? 1 : 0, email_vysledek: ma ? null : 'bez_smtp' }; });
 db.tiket.push({ id: 'tk1', cislo: 1, typ: 'dotaz', predmet: 'Ukázkový dotaz pro TBDB', text: 'Takhle vypadá dotaz kanceláře. V ukázce se nic neodesílá.', spech: false, stav: 'resime', autor_jmeno: 'Laďka', vytvoreno: iso(new Date(TED - DEN)), zmeneno: iso(new Date(TED - DEN)) });
 
 // ilustrační „fotky“ (vymyšlené postavy, žádné skutečné osoby) – SVG podle cesty
@@ -201,6 +205,8 @@ window.fetch = async (vstup, init = {}) => {
   }
   if (p.endsWith('/rest/v1/tiket_zprava')) { if (m === 'POST') { db.zprava.push({ ...body, id: 'z' + db.zprava.length, vytvoreno: new Date().toISOString() }); return odpoved(undefined, 201); } return odpoved(db.zprava.filter((z) => z.tiket_id === hodnota(q, 'tiket_id'))); }
   if (p.endsWith('/rest/v1/tiket_priloha')) return odpoved(m === 'POST' ? undefined : [], m === 'POST' ? 201 : 200);
+  if (p.endsWith('/rest/v1/push_odber')) { const os = hodnota(q, 'osoba_id'); return odpoved(os ? db.push.filter((x) => x.osoba_id === os) : db.push.filter((x) => x.aktivni)); }
+  if (p.endsWith('/rest/v1/oznameni')) return odpoved(db.ozn.filter((x) => x.osoba_id === hodnota(q, 'osoba_id')));
   if (p.endsWith('/rest/v1/akce_zprava')) { let l = db.azp; const ak = hodnota(q, 'akce_id'); if (ak) l = l.filter((z) => z.akce_id === ak);
     if (q.get('od_kancelare') === 'eq.false') l = l.filter((z) => !z.od_kancelare); if (q.get('precteno_kancelari') === 'is.null') l = l.filter((z) => !z.precteno_kancelari);
     if (m === 'HEAD') return new Response(null, { status: 200, headers: { 'content-range': '*/' + l.length } });
